@@ -1,9 +1,0 @@
-## Interface: 20504
-## Title: BeanArena
-## Notes: TBC Anniversary Arena Point Calculator
-## Author: Nicepriest
-## Version: 1.1.0
-## IconTexture: Interface\Icons\Achievement_Arena_2v2_7
-## SavedVariables: BeanArenaDB
-
-BeanArena.lua
