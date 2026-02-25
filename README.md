@@ -6,16 +6,6 @@
 
 BeanArena is a lightweight addon that calculates your weekly arena point rewards, tracks your match history, and keeps your honor and battleground mark counts in one place.
 
----
-## WoW TBC Anniversary Addon Installation
-
-1. Download the addon as a **ZIP** from GitHub.
-2. Unzip the file.
-3. Copy the addon folder to:  
-   `World of Warcraft/_anniversary_/Interface/AddOns/`
-4. Ensure the `.toc` file is directly inside the addon folder (not nested).
-5. Restart WoW and enable the addon at the Character Select screen.
-
 ## Features
 
 ### Arena Point Calculator
