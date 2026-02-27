@@ -144,17 +144,47 @@ end
 -- ============================================================
 local PVP_MARKS = { [20560]="AV", [20558]="WSG", [20559]="AB", [29025]="EotS" }
 
+-- Safe container API wrappers - TBC Anniversary has these as globals,
+-- some builds moved them to C_Container. Check each function individually.
+local function SafeGetContainerNumSlots(bag)
+    if C_Container and C_Container.GetContainerNumSlots then
+        return C_Container.GetContainerNumSlots(bag) or 0
+    elseif GetContainerNumSlots then
+        return GetContainerNumSlots(bag) or 0
+    end
+    return 0
+end
+
+local function SafeGetContainerItemLink(bag, slot)
+    if C_Container and C_Container.GetContainerItemLink then
+        return C_Container.GetContainerItemLink(bag, slot)
+    elseif GetContainerItemLink then
+        return GetContainerItemLink(bag, slot)
+    end
+    return nil
+end
+
+local function SafeGetContainerItemCount(bag, slot)
+    if C_Container and C_Container.GetContainerItemInfo then
+        local info = C_Container.GetContainerItemInfo(bag, slot)
+        return info and info.stackCount or 1
+    elseif GetContainerItemInfo then
+        local _, count = GetContainerItemInfo(bag, slot)
+        return count or 1
+    end
+    return 1
+end
+
 local function GetPvPMarkCounts()
     local counts = { AV=0, WSG=0, AB=0, EotS=0 }
     for bag = 0, 4 do
-        local numSlots = C_Container and C_Container.GetContainerNumSlots(bag) or GetContainerNumSlots(bag)
+        local numSlots = SafeGetContainerNumSlots(bag)
         for slot = 1, numSlots do
-            local link = C_Container and C_Container.GetContainerItemLink(bag, slot) or GetContainerItemLink(bag, slot)
+            local link = SafeGetContainerItemLink(bag, slot)
             if link then
                 for itemID, markName in pairs(PVP_MARKS) do
                     if link:find("item:" .. itemID .. ":") then
-                        local info = C_Container and C_Container.GetContainerItemInfo(bag, slot)
-                        counts[markName] = counts[markName] + (info and info.stackCount or 1)
+                        counts[markName] = counts[markName] + SafeGetContainerItemCount(bag, slot)
                     end
                 end
             end
@@ -262,12 +292,24 @@ local function SnapshotOpponents()
         local u = "arena" .. i
         if UnitExists(u) then
             local _, cls = UnitClass(u)
-            table.insert(members, { name = UnitName(u) or "?", class = cls or "UNKNOWN" })
+            local name = UnitName(u) or "?"
+            table.insert(members, { name = name, class = cls or "UNKNOWN" })
         end
     end
-    if #members > 0 then
-        pendingOpponents = members
+    if #members == 0 then return end
+    -- Merge: keep any previously seen opponents that are no longer visible
+    -- (they may have left the arena after dying). Use name as unique key.
+    if pendingOpponents and #pendingOpponents > #members then
+        local seen = {}
+        for _, m in ipairs(members) do seen[m.name] = true end
+        for _, prev in ipairs(pendingOpponents) do
+            if not seen[prev.name] then
+                table.insert(members, prev)
+                seen[prev.name] = true
+            end
+        end
     end
+    pendingOpponents = members
 end
 
 local function SaveMatch(won)
@@ -1145,6 +1187,21 @@ SlashCmdList["BEANARENA"]=function(msg)
         local m=GetPvPMarkCounts(); print("|cffFFD700[BeanArena]|r Marks:")
         for n,c in pairs(m) do print("  "..n..": |cffFFD700"..c.."|r") end
     elseif msg=="options" then ShowOptions()
+    elseif msg=="debug" then
+        print("|cffFFD700[BeanArena]|r === DEBUG ===")
+        print("PVPFrame exists: " .. tostring(PVPFrame ~= nil))
+        print("CharacterFrame exists: " .. tostring(CharacterFrame ~= nil))
+        if CharacterFrame then
+            for i = 1, 10 do
+                local tab = _G["CharacterFrameTab"..i]
+                if tab then
+                    print(string.format("  Tab%d = '%s'", i, tab:GetText() or "(nil)"))
+                end
+            end
+        else
+            print("  Open your Character Sheet first, then run /ap debug again")
+        end
+        print("(PVP button removed)")
     elseif msg=="help" then
         print("|cffFFD700[BeanArena]|r Commands:")
         print("  /ap              - Toggle main window")
@@ -1174,6 +1231,7 @@ eFrame:RegisterEvent("UPDATE_BATTLEFIELD_SCORE")
 -- Snapshot opponents on unit change (catches before they leave after death)
 eFrame:RegisterEvent("ARENA_OPPONENT_UPDATE")
 eFrame:RegisterEvent("UNIT_HEALTH")
+eFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 
 eFrame:SetScript("OnEvent",function(self,event,arg1)
     if event=="ADDON_LOADED" and arg1==ADDON_NAME then
@@ -1255,86 +1313,67 @@ eFrame:SetScript("OnEvent",function(self,event,arg1)
         -- Snapshot opponents while units are still present
         if inArena then SnapshotOpponents() end
 
+    elseif event=="COMBAT_LOG_EVENT_UNFILTERED" then
+        -- Snapshot the moment any arena unit takes damage or dies,
+        -- before their unit token becomes invalid
+        if not inArena then return end
+        local _, subEvent, _, _, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
+        if subEvent and (subEvent:find("_DAMAGE") or subEvent:find("_DIED") or subEvent == "UNIT_DIED") then
+            SnapshotOpponents()
+        end
+
     elseif event=="UPDATE_BATTLEFIELD_STATUS" then
         if frame:IsShown() then BeanArena_RefreshFrame() end
 
     elseif event=="UPDATE_BATTLEFIELD_SCORE" then
         if not inArena then return end
-        -- Final snapshot before units disappear
+        -- Always snapshot opponents while in arena (catches them before they leave)
         SnapshotOpponents()
         if not matchBracket then matchBracket=DetectBracket() end
-        local numScores=GetNumBattlefieldScores and GetNumBattlefieldScores() or 0
-        if numScores>0 then
-            -- Find our team index by scanning score entries for the player's name
-            local playerName=UnitName("player")
-            local myTeam=nil
-            for i=1,numScores do
-                local name,_,_,_,_,_,_,_,_,_,_,_,teamIndex=GetBattlefieldScore(i)
-                if name and name:find(playerName or "",1,true) then
-                    myTeam=teamIndex; break
-                end
+        -- Only record the match when there is an actual winner declared.
+        -- GetBattlefieldWinner() returns nil mid-match and 0 or 1 when match ends.
+        local winner = GetBattlefieldWinner and GetBattlefieldWinner()
+        if winner == nil then return end  -- mid-match score update, ignore
+        local numScores = GetNumBattlefieldScores and GetNumBattlefieldScores() or 0
+        -- Find our team index by matching player name in the score table
+        local playerName = UnitName("player") or ""
+        local myTeam = nil
+        for i = 1, numScores do
+            local name,_,_,_,_,_,_,_,_,_,_,_,teamIndex = GetBattlefieldScore(i)
+            if name and name:find(playerName, 1, true) then
+                myTeam = teamIndex
+                break
             end
-            local winner=GetBattlefieldWinner and GetBattlefieldWinner()
-            local won
-            if myTeam~=nil and winner~=nil then
-                won=(winner==myTeam)
-            else
-                won=(winner==0)
-            end
-            SaveMatch(won)
-            inArena=false
-            if hFrame:IsShown() then BeanArena_RefreshHistory() end
         end
+        -- Determine win: if we found our team index, compare to winner index.
+        -- Team 0 is always "our side" in TBC arena, so fallback to winner==0.
+        local won
+        if myTeam ~= nil then
+            won = (winner == myTeam)
+        else
+            won = (winner == 0)
+        end
+        SaveMatch(won)
+        inArena = false
+        if hFrame:IsShown() then BeanArena_RefreshHistory() end
     end
 end)
 
 -- ============================================================
--- HONOR HOOK + PVP UI BUTTON
+-- HONOR HOOK (open-with-honor feature only)
 -- ============================================================
 local honorHookDone = false
 
 SetupHonorHook=function()
     if honorHookDone then return end
     honorHookDone=true
-
-    -- PVPUIFrame is the standalone H-key honor/arena window in TBC Anniversary.
-    -- It is always available as a global by the time the addon loads.
-    -- PVPUIFrame is the standalone H-key window. It exists at load time in TBC.
-    -- Try now, and also retry at PLAYER_LOGIN in case it loads late.
-    local function TryAttachPVPButton()
-        local pvpUI = PVPUIFrame
-        if not pvpUI or _G["BeanArenaPVPButton"] then return end
-        -- Button sits in the top-left, well clear of the close X (top-right)
-        local pvpBtn = CreateFrame("Button","BeanArenaPVPButton",pvpUI,"UIPanelButtonTemplate")
-        pvpBtn:SetSize(72,18)
-        pvpBtn:SetText("BeanArena")
-        pvpBtn:GetFontString():SetFontObject("GameFontNormalSmall")
-        pvpBtn:SetPoint("TOPLEFT",pvpUI,"TOPLEFT",8,-4)
-        pvpBtn:SetScript("OnClick",function()
-            if frame:IsShown() then frame:Hide() else OpenBeanArena() end
-        end)
-        pvpUI:HookScript("OnShow",function()
+    if PVPFrame then
+        PVPFrame:HookScript("OnShow",function()
             if DB("openWithHonor") or DB("openBothWithHonor") then OpenBeanArena() end
             if DB("openBothWithHonor") then OpenHistory() end
         end)
     end
-
-    TryAttachPVPButton()
-
-    -- Fallback: retry at PLAYER_LOGIN via a one-shot OnUpdate (frame may load late)
-    if not _G["BeanArenaPVPButton"] then
-        local retryElapsed = 0
-        local retryFrame = CreateFrame("Frame")
-        retryFrame:SetScript("OnUpdate", function(self, elapsed)
-            retryElapsed = retryElapsed + elapsed
-            TryAttachPVPButton()
-            if _G["BeanArenaPVPButton"] or retryElapsed > 10 then
-                self:SetScript("OnUpdate", nil)
-            end
-        end)
-    end
 end
-
 -- ============================================================
 -- TICKERS
 -- ============================================================
