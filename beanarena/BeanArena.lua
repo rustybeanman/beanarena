@@ -1,31 +1,49 @@
 -- BeanArena.lua
--- TBC Anniversary Arena Point Calculator & History Tracker
--- v1.4.0
+-- TBC Anniversary Arena Point Calculator & Honor Tracker
+-- ============================================================
+-- VERSION HISTORY
+-- ============================================================
+-- v1.0.0 | Initial release - arena point calculator
+-- v1.1.0 | Honor tracking, BG marks, minimap button
+-- v1.2.0 | Arena history tracking, class icons, win/loss
+-- v1.3.0 | Resizable history window, per-bracket filters, PVP UI hook
+-- v1.4.0 | Per-character history, result filters, bracket detection fix
+-- v1.5.0 | 2025-03-01 | Per-char storage via chars table, PLAYER_LOGIN migration
+-- v1.5.1 | 2025-03-01 | Container API compat fix
+-- v1.5.2 | 2025-03-01 | Minimap border removed, PVP button removed
+-- v1.5.3 | 2025-03-01 | Win/loss: guard winner==nil mid-match
+-- v1.5.4 | 2025-03-01 | Win/loss: switched to UnitIsDeadOrGhost
+-- v1.5.5 | 2025-03-01 | Kills-based win detection attempt
+-- v1.5.6 | 2025-03-01 | Fresh win detection rewrite
+-- v1.5.7 | 2025-03-01 | Win detection partially working
+-- v1.6.0 | 2025-03-01 | Removed all arena history tracking and history UI
+-- v1.7.0 | 2025-03-01 | Honor cap bar, milestones, gear planner, minimap tooltip
+-- v1.8.0 | 2025-03-01 | Two-column layout, EotS fix, individual mark rows
+-- v1.8.1 | 2025-03-01 | Frame height 420->540
+-- v1.9.0 | 2025-03-01 | UI polish, column reorder, inline AP calc, honor gear progress
+-- v2.0.0 | 2025-03-01 | Arena Gear Costs popup + Honor Gear Costs popup
+--         |             Full S1 item lists with marks/honor/AP/rating requirements
+--         |             Buttons in respective sections; live progress in popups
+-- ============================================================
+-- CURRENT: v2.0.0
+-- ============================================================
 
 -- ============================================================
 -- SAVED VARIABLES
 -- ============================================================
-BeanArenaDB     = BeanArenaDB     or {}
-BeanArenaCharDB = BeanArenaCharDB or {}  -- per-character saved variables
+BeanArenaDB = BeanArenaDB or {}
 
 local ADDON_NAME    = "BeanArena"
 local RESET_WEEKDAY = 3 -- Tuesday
 
 local defaults = {
-    manual2v2         = 0,
-    manual3v3         = 0,
-    manual5v5         = 0,
-    minimapAngle      = 45,
-    frameX            = nil,
-    frameY            = nil,
-    historyX          = nil,
-    historyY          = nil,
-    historyW          = 820,
-    historyH          = 520,
-    openWithHonor     = false,
-    openBothWithHonor = false,
-    histFilter        = "ALL",   -- "ALL","2v2","3v3","5v5"
-    histResultFilter  = "ALL",   -- "ALL","WIN","LOSS"
+    manual2v2     = 0,
+    manual3v3     = 0,
+    manual5v5     = 0,
+    minimapAngle  = 45,
+    frameX        = nil,
+    frameY        = nil,
+    openWithHonor = false,
 }
 
 local function DB(key)
@@ -33,31 +51,6 @@ local function DB(key)
     return BeanArenaDB[key]
 end
 local function SetDB(key, val) BeanArenaDB[key] = val end
-
--- ============================================================
--- PER-CHARACTER STORAGE
--- ============================================================
--- History is stored in BeanArenaDB.chars["CharName-Realm"].arenaHistory
--- so it is account-wide SavedVariables (always reliable) but keyed per char.
--- BeanArenaCharDB is kept as SavedVariablesPerChar for forward compat but
--- we primarily use the chars table approach which has no timing issues.
-local currentCharKey = nil  -- set at PLAYER_LOGIN when UnitName is valid
-
-local function CharDB()
-    if not currentCharKey then return nil end
-    if not BeanArenaDB.chars then BeanArenaDB.chars = {} end
-    if not BeanArenaDB.chars[currentCharKey] then
-        BeanArenaDB.chars[currentCharKey] = { arenaHistory = {} }
-    end
-    return BeanArenaDB.chars[currentCharKey]
-end
-
-local function CharHistory()
-    local db = CharDB()
-    if not db then return {} end  -- not logged in yet, return empty
-    if not db.arenaHistory then db.arenaHistory = {} end
-    return db.arenaHistory
-end
 
 -- ============================================================
 -- POINT FORMULA
@@ -89,6 +82,54 @@ local function CalcBestPoints(r2, r3, r5)
 end
 
 -- ============================================================
+-- GEAR DATA TABLES
+-- ============================================================
+
+-- Used by the weeks-to-gear planner in the main frame
+local GEAR_ITEMS = {
+    { name="Head",      cost=1875, rating=0    },
+    { name="Shoulders", cost=1500, rating=2000 },
+    { name="Chest",     cost=1875, rating=0    },
+    { name="Hands",     cost=1125, rating=0    },
+    { name="Legs",      cost=1875, rating=0    },
+    { name="Weapon",    cost=3000, rating=1700 },
+    { name="Offhand",   cost=1500, rating=1700 },
+}
+
+-- Full S1 Arena gear list for the popup
+local ARENA_GEAR_FULL = {
+    { slot="Gloves",           ap=930,  rating=0    },
+    { slot="Wand",             ap=830,  rating=0    },
+    { slot="Caster Off-hand",  ap=930,  rating=0    },
+    { slot="Helmet",           ap=1550, rating=0    },
+    { slot="Legs",             ap=1550, rating=0    },
+    { slot="Chest",            ap=1550, rating=0    },
+    { slot="Shoulders",        ap=1245, rating=2000 },
+    { slot="Shield",           ap=1550, rating=1700 },
+    { slot="Off-hand Melee",   ap=930,  rating=1700 },
+    { slot="Throwing Weapon",  ap=830,  rating=1700 },
+    { slot="Main-hand Melee",  ap=2175, rating=1700 },
+    { slot="Caster Main-hand", ap=2610, rating=1700 },
+    { slot="2H / Main Ranged", ap=3110, rating=1700 },
+    { slot="Caster Staff",     ap=3110, rating=1700 },
+}
+
+-- Full S1 Honor gear list for the popup
+local HONOR_GEAR_FULL = {
+    { slot="Neck",      honor=12695, marks={ EotS=5  } },
+    { slot="Ring",      honor=12695, marks={ AV=5    } },
+    { slot="Cloak",     honor=9785,  marks={ AB=10   } },
+    { slot="Bracers",   honor=9785,  marks={ WSG=10  } },
+    { slot="Belt",      honor=14815, marks={ AB=10   } },
+    { slot="Boots",     honor=14815, marks={ EotS=20 } },
+    { slot="Gloves",    honor=10475, marks={ AV=10   } },
+    { slot="Shoulders", honor=10475, marks={ AB=10   } },
+    { slot="Helmet",    honor=16665, marks={ AV=15   } },
+    { slot="Legs",      honor=16665, marks={ WSG=15  } },
+    { slot="Chest",     honor=17140, marks={ AB=15   } },
+}
+
+-- ============================================================
 -- RESET TIMER
 -- ============================================================
 local function GetDaysToReset()
@@ -102,8 +143,10 @@ local function GetDaysToReset()
 end
 
 -- ============================================================
--- HONOR
+-- CURRENCIES
 -- ============================================================
+local HONOR_CAP = 75000
+
 local function GetCurrentHonor()
     if GetHonorCurrency then
         local h = GetHonorCurrency()
@@ -120,9 +163,6 @@ local function GetCurrentHonor()
     return 0
 end
 
--- ============================================================
--- ARENA POINTS (banked)
--- ============================================================
 local function GetCurrentArenaPoints()
     if GetArenaPoints then
         local pts = GetArenaPoints()
@@ -142,10 +182,8 @@ end
 -- ============================================================
 -- PVP MARKS
 -- ============================================================
-local PVP_MARKS = { [20560]="AV", [20558]="WSG", [20559]="AB", [29025]="EotS" }
+local PVP_MARKS = { [20560]="AV", [20558]="WSG", [20559]="AB", [29024]="EotS" }
 
--- Safe container API wrappers - TBC Anniversary has these as globals,
--- some builds moved them to C_Container. Check each function individually.
 local function SafeGetContainerNumSlots(bag)
     if C_Container and C_Container.GetContainerNumSlots then
         return C_Container.GetContainerNumSlots(bag) or 0
@@ -201,135 +239,9 @@ local function GetLiveRatings()
     if GetPersonalRatedInfo then
         local a,_,_,_,_,b = GetPersonalRatedInfo(1); r2=tonumber(a) or 0; g2=tonumber(b) or 0
         local c,_,_,_,_,d = GetPersonalRatedInfo(2); r3=tonumber(c) or 0; g3=tonumber(d) or 0
-        local e,_,_,_,_,f = GetPersonalRatedInfo(3); r5=tonumber(e)  or 0; g5=tonumber(f) or 0
+        local e,_,_,_,_,f = GetPersonalRatedInfo(3); r5=tonumber(e) or 0; g5=tonumber(f) or 0
     end
     return r2,r3,r5,g2,g3,g5
-end
-
--- ============================================================
--- CLASS DATA
--- ============================================================
-local CLASS_COLORS = {
-    WARRIOR="C79C6E", PALADIN="F58CBA", HUNTER="ABD473", ROGUE="FFF569",
-    PRIEST="FFFFFF",  SHAMAN="0070DE",  MAGE="69CCF0",   WARLOCK="9482C9",
-    DRUID="FF7D0A",   DEATHKNIGHT="C41F3B",
-}
-local CLASS_SHORT = {
-    WARRIOR="War", PALADIN="Pal", HUNTER="Hunt", ROGUE="Rog",
-    PRIEST="Pri",  SHAMAN="Sha",  MAGE="Mag",    WARLOCK="Lock",
-    DRUID="Dru",   DEATHKNIGHT="DK",
-}
-local CLASS_ICON_TCOORDS = {
-    WARRIOR     = {0,    0.25, 0,    0.25},
-    MAGE        = {0.25, 0.5,  0,    0.25},
-    ROGUE       = {0.5,  0.75, 0,    0.25},
-    DRUID       = {0.75, 1.0,  0,    0.25},
-    HUNTER      = {0,    0.25, 0.25, 0.5 },
-    SHAMAN      = {0.25, 0.5,  0.25, 0.5 },
-    PRIEST      = {0.5,  0.75, 0.25, 0.5 },
-    WARLOCK     = {0.75, 1.0,  0.25, 0.5 },
-    PALADIN     = {0,    0.25, 0.5,  0.75},
-    DEATHKNIGHT = {0.25, 0.5,  0.5,  0.75},
-}
-local CLASS_ICON_TEX = "Interface\\GLUES\\CHARACTERCREATE\\UI-CHARACTERCREATE-CLASSES"
-
--- ============================================================
--- ARENA HISTORY TRACKING
--- ============================================================
-local inArena      = false
-local matchStart   = 0
-local matchBracket = nil
-
-local function GetTeamSnapshot(isOpponent)
-    local members = {}
-    if isOpponent then
-        -- Capture all 5 possible arena slots immediately
-        for i = 1, 5 do
-            local u = "arena" .. i
-            if UnitExists(u) then
-                local _, cls = UnitClass(u)
-                table.insert(members, { name = UnitName(u) or "?", class = cls or "UNKNOWN" })
-            end
-        end
-    else
-        local _, cls = UnitClass("player")
-        table.insert(members, { name = UnitName("player") or "?", class = cls or "UNKNOWN" })
-        for i = 1, 4 do
-            local u = "party" .. i
-            if UnitExists(u) then
-                local _, pc = UnitClass(u)
-                table.insert(members, { name = UnitName(u) or "?", class = pc or "UNKNOWN" })
-            end
-        end
-    end
-    return members
-end
-
-local function DetectBracket()
-    -- Method 1: count our side (party + self) - most reliable in TBC
-    local partyCount = 0
-    for i = 1, 4 do if UnitExists("party"..i) then partyCount = partyCount + 1 end end
-    local ourSize = partyCount + 1  -- include self
-
-    -- Method 2: count visible opponents
-    local opponentCount = 0
-    for i = 1, 5 do if UnitExists("arena"..i) then opponentCount = opponentCount + 1 end end
-
-    -- Use whichever count is higher (opponents may not all be loaded yet,
-    -- our party is always known)
-    local maxCount = math.max(ourSize, opponentCount)
-    if maxCount >= 5 then return "5v5"
-    elseif maxCount >= 3 then return "3v3"
-    else return "2v2" end
-end
-
--- Snapshot opponent data early (before they leave after death)
-local pendingOpponents = nil
-
-local function SnapshotOpponents()
-    local members = {}
-    for i = 1, 5 do
-        local u = "arena" .. i
-        if UnitExists(u) then
-            local _, cls = UnitClass(u)
-            local name = UnitName(u) or "?"
-            table.insert(members, { name = name, class = cls or "UNKNOWN" })
-        end
-    end
-    if #members == 0 then return end
-    -- Merge: keep any previously seen opponents that are no longer visible
-    -- (they may have left the arena after dying). Use name as unique key.
-    if pendingOpponents and #pendingOpponents > #members then
-        local seen = {}
-        for _, m in ipairs(members) do seen[m.name] = true end
-        for _, prev in ipairs(pendingOpponents) do
-            if not seen[prev.name] then
-                table.insert(members, prev)
-                seen[prev.name] = true
-            end
-        end
-    end
-    pendingOpponents = members
-end
-
-local function SaveMatch(won)
-    -- history stored via CharHistory() keyed per character
-    local d = date("*t", time())
-    -- Use snapshotted opponents if available (they may have left by now)
-    local opponents = pendingOpponents or GetTeamSnapshot(true)
-    local entry = {
-        date     = string.format("%02d/%02d %02d:%02d", d.month, d.day, d.hour, d.min),
-        bracket  = matchBracket or DetectBracket(),
-        won      = won,
-        duration = math.max(0, math.floor(GetTime() - matchStart)),
-        friendly = GetTeamSnapshot(false),
-        opponent = opponents,
-        note     = "",
-    }
-    pendingOpponents = nil
-    local hist = CharHistory()
-    table.insert(hist, 1, entry)
-    while #hist > 200 do table.remove(hist) end
 end
 
 -- ============================================================
@@ -344,7 +256,7 @@ local function MakeBGFrame(name, parent, w, h)
         tile = false, tileSize = 32, edgeSize = 26,
         insets = { left=8, right=8, top=8, bottom=8 },
     })
-    f:SetBackdropColor(0, 0, 0, 1)
+    f:SetBackdropColor(0, 0, 0, 0.88)
     f:SetBackdropBorderColor(0.4, 0.35, 0.25, 1)
     return f
 end
@@ -353,26 +265,16 @@ local function RegisterEsc(f)
     tinsert(UISpecialFrames, f:GetName())
 end
 
-local function MakeRow(parent, y, lbl)
-    local l = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    l:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, y)
-    l:SetText(lbl); l:SetTextColor(0.8, 0.8, 0.8)
-    local v = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    v:SetPoint("TOPLEFT", parent, "TOPLEFT", 185, y)
-    v:SetText("--")
-    return v
-end
-
-local function MakeHeader(parent, y, text)
+local function MakeHeader(parent, y, text, x)
     local h = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    h:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, y)
+    h:SetPoint("TOPLEFT", parent, "TOPLEFT", x or 18, y)
     h:SetText("|cff00CCFF" .. text .. "|r")
 end
 
-local function MakeLine(parent, y, w)
+local function MakeLine(parent, y, w, x)
     local l = parent:CreateTexture(nil, "ARTWORK")
     l:SetSize(w or 294, 1)
-    l:SetPoint("TOPLEFT", parent, "TOPLEFT", 18, y)
+    l:SetPoint("TOPLEFT", parent, "TOPLEFT", x or 18, y)
     l:SetColorTexture(0.4, 0.4, 0.4, 0.6)
 end
 
@@ -383,19 +285,9 @@ local function FS(parent, x, y)
     return f
 end
 
-local function MakeSmallButton(parent, w, h, label)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(w, h); b:SetText(label)
-    b:GetFontString():SetFontObject("GameFontNormalSmall")
-    return b
-end
-
 -- ============================================================
 -- MINIMAP BUTTON
 -- ============================================================
--- Minimap button - standard LibDBIcon/TBC addon approach
--- Button: 31px hitbox. Icon: cropped texture in ARTWORK. Border ring: OVERLAY child.
--- MiniMap-TrackingBorder is the gold ring texture present in all WoW versions.
 local minimapButton = CreateFrame("Button", "BeanArenaMinimapButton", Minimap)
 minimapButton:SetSize(31, 31)
 minimapButton:SetFrameStrata("MEDIUM")
@@ -403,14 +295,11 @@ minimapButton:SetFrameLevel(8)
 minimapButton:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 minimapButton:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
 
--- Icon: sits in ARTWORK layer, centered, slight texcoord crop for clean edges
 local mmIcon = minimapButton:CreateTexture(nil, "ARTWORK")
 mmIcon:SetSize(20, 20)
 mmIcon:SetPoint("CENTER", minimapButton, "CENTER", 0, 0)
 mmIcon:SetTexture("Interface\\Icons\\Achievement_Arena_2v2_7")
 mmIcon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-
--- No border ring on minimap button
 
 local function UpdateMinimapPos()
     local a = math.rad(DB("minimapAngle"))
@@ -435,9 +324,25 @@ minimapButton:RegisterForClicks("LeftButtonUp", "MiddleButtonUp", "RightButtonUp
 minimapButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
     GameTooltip:SetText("|cffFFD700BeanArena|r", 1, 1, 1)
-    GameTooltip:AddLine("Left-click: toggle window", 0.8, 0.8, 0.8)
-    GameTooltip:AddLine("Middle-click: commands", 0.8, 0.8, 0.8)
-    GameTooltip:AddLine("Right-click: options", 0.8, 0.8, 0.8)
+    local honor = GetCurrentHonor()
+    local ap    = GetCurrentArenaPoints()
+    local r2,r3,r5,g2,g3,g5 = GetLiveRatings()
+    local er2=g2>=10 and r2 or 0; local er3=g3>=10 and r3 or 0; local er5=g5>=10 and r5 or 0
+    local best,bb = CalcBestPoints(er2,er3,er5)
+    local honorPct = math.min(100, math.floor(honor / HONOR_CAP * 100))
+    GameTooltip:AddLine(string.format("Honor: |cffFFD700%s|r / 75,000  (%d%%)",
+        BreakUpLargeNumbers and BreakUpLargeNumbers(honor) or tostring(honor), honorPct), 0.8, 0.8, 0.8)
+    if honor >= 70000 then
+        GameTooltip:AddLine("|cffFF4444Warning: Near honor cap! Spend soon.|r")
+    end
+    GameTooltip:AddLine(string.format("Arena Points: |cff88FF88%d|r", ap), 0.8, 0.8, 0.8)
+    if best > 0 then
+        GameTooltip:AddLine(string.format("Best reward: |cffFFD700%.0f AP|r  (%s)", best, bb), 0.8, 0.8, 0.8)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Left-click: toggle window", 0.6, 0.6, 0.6)
+    GameTooltip:AddLine("Middle-click: commands",    0.6, 0.6, 0.6)
+    GameTooltip:AddLine("Right-click: options",      0.6, 0.6, 0.6)
     GameTooltip:Show()
 end)
 minimapButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -445,7 +350,9 @@ minimapButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 -- ============================================================
 -- FORWARD DECLARATIONS
 -- ============================================================
-local OpenBeanArena, OpenHistory, OpenCommands, frame, hFrame, cFrame, SetupHonorHook
+local OpenBeanArena, OpenCommands, frame, cFrame, SetupHonorHook
+local arenaGearFrame, honorGearFrame
+local BeanArena_RefreshArenaGearPopup, BeanArena_RefreshHonorGearPopup
 
 -- ============================================================
 -- OPTIONS DROPDOWN
@@ -466,38 +373,25 @@ local function ShowOptions()
             i.text = text; i.isTitle = true; i.notCheckable = true; i.disabled = true
             UIDropDownMenu_AddButton(i)
         end
-
         Title("|cffFFD700BeanArena Options|r")
         Btn("Toggle BeanArena Window", function()
             if frame:IsShown() then frame:Hide() else OpenBeanArena() end
             CloseDropDownMenus()
         end, nil, true)
-        Btn("Toggle History Window", function()
-            if hFrame:IsShown() then hFrame:Hide() else OpenHistory() end
-            CloseDropDownMenus()
-        end, nil, true)
-
         Btn("Toggle Commands Window", function()
             if cFrame:IsShown() then cFrame:Hide() else OpenCommands() end
             CloseDropDownMenus()
         end, nil, true)
-
         Title("Open With Honor Window")
-        local honorOnly = DB("openWithHonor") and not DB("openBothWithHonor")
+        Btn("Open on Login", function()
+            SetDB("openOnLogin", not DB("openOnLogin"))
+            CloseDropDownMenus()
+        end, DB("openOnLogin"), false)
+        local honorOnly = DB("openWithHonor")
         Btn("BeanArena only", function()
-            SetDB("openWithHonor", not honorOnly); SetDB("openBothWithHonor", false)
+            SetDB("openWithHonor", not honorOnly)
             CloseDropDownMenus()
         end, honorOnly, false)
-        local honorBoth = DB("openBothWithHonor")
-        Btn("BeanArena + History", function()
-            SetDB("openBothWithHonor", not honorBoth); SetDB("openWithHonor", not honorBoth)
-            CloseDropDownMenus()
-        end, honorBoth, false)
-        local honorOff = not DB("openWithHonor") and not DB("openBothWithHonor")
-        Btn("Off", function()
-            SetDB("openWithHonor", false); SetDB("openBothWithHonor", false)
-            CloseDropDownMenus()
-        end, honorOff, false)
     end, "MENU")
     ToggleDropDownMenu(1, nil, optDD, "cursor", 0, 0)
 end
@@ -513,9 +407,81 @@ minimapButton:SetScript("OnClick", function(self, btn)
 end)
 
 -- ============================================================
+-- LAYOUT CONSTANTS
+-- ============================================================
+local FW, FH = 820, 610
+
+local LC    = 18
+local RC    = FW/2 + 14
+local CW    = FW/2 - 28
+local BAR_W = CW - 4
+
+-- LEFT COLUMN Y
+local Y_LHEAD      = -38
+local Y_LLINE1     = -54
+local Y_LCOLHDR    = -64
+local Y_LLINE2     = -75
+local Y_L2V2       = -86
+local Y_L3V3       = -104
+local Y_L5V5       = -122
+local Y_LLINE3     = -137
+local Y_LBEST      = -148
+local Y_LBANKED    = -166
+local Y_LLINE4     = -183
+local Y_MHEAD      = -193
+local Y_MLINE1     = -207
+local Y_MCALCHDR   = -217
+local Y_MLINE1B    = -228
+local Y_M2V2       = -239
+local Y_M3V3       = -257
+local Y_M5V5       = -275
+local Y_MLINE2     = -291
+local Y_MBEST      = -302
+local Y_MBTN       = -321   -- "View Arena Gear Costs" button
+local Y_MILE_LINE0 = -351
+local Y_MILEHEAD   = -361
+local Y_MILELINE1  = -375
+local Y_MWEAPON    = -386
+local Y_MSHOULDER  = -404
+local Y_GEAR_LINE  = -421
+local Y_GEAR_HEAD  = -431
+local Y_GEAR_LINE2 = -445
+local Y_GEAR_COLHDR= -455
+local Y_GEAR_LINE3 = -466
+local Y_GEAR_START = -477
+
+-- RIGHT COLUMN Y
+local Y_RHEAD      = -38
+local Y_RLINE1     = -54
+local Y_RHONOR     = -65
+local Y_RRESET     = -83
+local Y_RAP        = -101
+local Y_RLINE2     = -117
+local Y_RBAR       = -128
+local Y_RWARN      = -150
+local Y_RLINE3     = -165
+local Y_RMARKHEAD  = -175
+local Y_RMARKLINE  = -189
+local Y_RAVMARKS   = -200
+local Y_RWSGMARKS  = -218
+local Y_RABMARKS   = -236
+local Y_REOTS      = -254
+local Y_RLINE4     = -270
+local Y_RPLANHEAD  = -280
+local Y_RPLANLINE  = -294
+local Y_RPLAN      = -305
+local Y_RBTN       = -323   -- "View Honor Gear Costs" button
+local Y_RLINE5     = -353
+local Y_RGEARHD    = -363
+local Y_RGEARLINE  = -377
+local Y_HGCOLHDR   = -388
+local Y_HGLINE     = -399
+local Y_HGSTART    = -410
+
+-- ============================================================
 -- MAIN FRAME
 -- ============================================================
-frame = MakeBGFrame("BeanArenaFrame", UIParent, 345, 510)
+frame = MakeBGFrame("BeanArenaFrame", UIParent, FW, FH)
 frame:SetFrameStrata("MEDIUM")
 frame:SetMovable(true); frame:EnableMouse(true)
 frame:RegisterForDrag("LeftButton")
@@ -535,71 +501,91 @@ local mainClose = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 mainClose:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -4, -4)
 mainClose:SetScript("OnClick", function() frame:Hide() end)
 
-local histBtn = MakeSmallButton(frame, 70, 22, "History")
-histBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -10)
-histBtn:SetScript("OnClick", function() OpenHistory() end)
+local divLine = frame:CreateTexture(nil, "ARTWORK")
+divLine:SetSize(1, FH - 36)
+divLine:SetPoint("TOPLEFT", frame, "TOPLEFT", FW/2, -30)
+divLine:SetColorTexture(0.4, 0.35, 0.25, 0.8)
 
--- ── LIVE RATINGS ─────────────────────────────────────────
--- Columns: Bracket | Rating | Games | Proj.AP | Proj Total
-MakeHeader(frame, -42, "Live Ratings (Auto)")
-MakeLine(frame, -56, 315)
+local function Row2(x, y, lbl)
+    local l = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    l:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
+    l:SetText(lbl); l:SetTextColor(0.8, 0.8, 0.8)
+    local v = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    v:SetPoint("TOPLEFT", frame, "TOPLEFT", x + 148, y)
+    v:SetText("--")
+    return v
+end
 
-local COL = { br=18, rat=90, gms=150, proj=208, total=272 }
-
-local function ColHdr(x, txt)
+local function SmallHdr(x, y, txt)
     local f = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    f:SetPoint("TOPLEFT", frame, "TOPLEFT", x, -63)
+    f:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
     f:SetText("|cffAAAAAA" .. txt .. "|r")
 end
-ColHdr(COL.br,    "Bracket")
-ColHdr(COL.rat,   "Rating")
-ColHdr(COL.gms,   "Games")
-ColHdr(COL.proj,  "Proj.AP")
-ColHdr(COL.total, "Proj Total")
-MakeLine(frame, -71, 315)
+
+-- ══════════════════════════════════════════════════════════════
+-- LEFT COLUMN — ARENA
+-- ══════════════════════════════════════════════════════════════
+
+MakeHeader(frame, Y_LHEAD,  "Current Arena Ratings", LC)
+MakeLine(frame,   Y_LLINE1, CW, LC)
+
+local LCOL = { br=LC, gms=LC+62, rat=LC+114, proj=LC+175, total=LC+255 }
+SmallHdr(LCOL.br,    Y_LCOLHDR, "Bracket")
+SmallHdr(LCOL.gms,   Y_LCOLHDR, "Games")
+SmallHdr(LCOL.rat,   Y_LCOLHDR, "Rating")
+SmallHdr(LCOL.proj,  Y_LCOLHDR, "Arena Points")
+SmallHdr(LCOL.total, Y_LCOLHDR, "AP + Next Week")
+MakeLine(frame, Y_LLINE2, CW, LC)
 
 local function LiveRow(y, label)
     local l = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    l:SetPoint("TOPLEFT", frame, "TOPLEFT", COL.br, y)
+    l:SetPoint("TOPLEFT", frame, "TOPLEFT", LCOL.br, y)
     l:SetText(label); l:SetTextColor(0.8, 0.8, 0.8)
-    return FS(frame, COL.rat, y),
-           FS(frame, COL.gms, y),
-           FS(frame, COL.proj, y),
-           FS(frame, COL.total, y)
+    local function F(x) return FS(frame, x, y) end
+    return F(LCOL.rat), F(LCOL.gms), F(LCOL.proj), F(LCOL.total)
 end
 
-local liveR2, liveG2, liveP2, livePT2 = LiveRow(-79,  "2v2")
-local liveR3, liveG3, liveP3, livePT3 = LiveRow(-95,  "3v3")
-local liveR5, liveG5, liveP5, livePT5 = LiveRow(-111, "5v5")
-MakeLine(frame, -123, 315)
+local liveR2, liveG2, liveP2, livePT2 = LiveRow(Y_L2V2, "2v2")
+local liveR3, liveG3, liveP3, livePT3 = LiveRow(Y_L3V3, "3v3")
+local liveR5, liveG5, liveP5, livePT5 = LiveRow(Y_L5V5, "5v5")
+MakeLine(frame, Y_LLINE3, CW, LC)
 
 local bestLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-bestLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -129)
+bestLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y_LBEST)
 bestLbl:SetText("Best Reward:"); bestLbl:SetTextColor(0.8, 0.8, 0.8)
 local liveBestVal = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-liveBestVal:SetPoint("LEFT", bestLbl, "RIGHT", 6, 0)
-liveBestVal:SetText("--")
+liveBestVal:SetPoint("LEFT", bestLbl, "RIGHT", 8, 0); liveBestVal:SetText("--")
 
 local apInlineLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-apInlineLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -145)
-apInlineLbl:SetText("Banked Arena Points:"); apInlineLbl:SetTextColor(0.8, 0.8, 0.8)
+apInlineLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y_LBANKED)
+apInlineLbl:SetText("Banked AP:"); apInlineLbl:SetTextColor(0.8, 0.8, 0.8)
 local apInlineVal = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-apInlineVal:SetPoint("LEFT", apInlineLbl, "RIGHT", 6, 0)
-apInlineVal:SetText("--")
+apInlineVal:SetPoint("LEFT", apInlineLbl, "RIGHT", 8, 0); apInlineVal:SetText("--")
 
--- ── MANUAL ENTRY ──────────────────────────────────────────
-MakeLine(frame, -161, 315)
-MakeHeader(frame, -167, "Manual Rating Entry")
-MakeLine(frame, -181, 315)
+-- Arena Point Calculator
+MakeLine(frame,   Y_LLINE4, CW, LC)
+MakeHeader(frame, Y_MHEAD,  "Arena Point Calculator", LC)
+MakeLine(frame,   Y_MLINE1, CW, LC)
+
+local CALC_LBL_X = LC
+local CALC_EB_X  = LC + 130
+local CALC_RES_X = LC + 240
+
+SmallHdr(CALC_LBL_X, Y_MCALCHDR, "Bracket")
+SmallHdr(CALC_EB_X,  Y_MCALCHDR, "Rating")
+SmallHdr(CALC_RES_X, Y_MCALCHDR, "Arena Points")
+MakeLine(frame, Y_MLINE1B, CW, LC)
 
 local editFocused = {}
+local manResultFS = {}
 
-local function MakeEditRow(y, labelText, dbKey)
+local function MakeCalcRow(y, labelText, dbKey, bracket)
     local l = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    l:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, y)
+    l:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC_LBL_X, y)
     l:SetText(labelText); l:SetTextColor(0.8, 0.8, 0.8)
     local eb = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-    eb:SetSize(80, 20); eb:SetPoint("TOPLEFT", frame, "TOPLEFT", 185, y + 4)
+    eb:SetSize(88, 20)
+    eb:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC_EB_X, y + 4)
     eb:SetAutoFocus(false); eb:SetNumeric(true); eb:SetMaxLetters(4)
     eb:SetText(tostring(DB(dbKey)))
     eb:SetScript("OnEditFocusGained", function() editFocused[dbKey] = true end)
@@ -615,434 +601,413 @@ local function MakeEditRow(y, labelText, dbKey)
     eb:SetScript("OnEscapePressed", function(self)
         self:SetText(tostring(DB(dbKey))); self:ClearFocus()
     end)
+    local res = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    res:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC_RES_X, y)
+    res:SetText("--")
+    manResultFS[bracket] = res
     return eb
 end
 
-local man2v2Edit = MakeEditRow(-187, "2v2 Rating:", "manual2v2")
-local man3v3Edit = MakeEditRow(-209, "3v3 Rating:", "manual3v3")
-local man5v5Edit = MakeEditRow(-231, "5v5 Rating:", "manual5v5")
+local man2v2Edit = MakeCalcRow(Y_M2V2, "2v2:", "manual2v2", "2v2")
+local man3v3Edit = MakeCalcRow(Y_M3V3, "3v3:", "manual3v3", "3v3")
+local man5v5Edit = MakeCalcRow(Y_M5V5, "5v5:", "manual5v5", "5v5")
 
-MakeLine(frame, -249, 315)
-local manualBestVal = MakeRow(frame, -255, "Manual Best:")
-local manualP2Val   = MakeRow(frame, -271, "  2v2 Points:")
-local manualP3Val   = MakeRow(frame, -287, "  3v3 Points:")
-local manualP5Val   = MakeRow(frame, -303, "  5v5 Points:")
+MakeLine(frame, Y_MLINE2, CW, LC)
 
--- ── HONOR & BG MARKS ──────────────────────────────────────
-MakeLine(frame, -319, 315)
-MakeHeader(frame, -325, "Honor and BG Marks")
-MakeLine(frame, -339, 315)
+local manBestLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+manBestLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y_MBEST)
+manBestLbl:SetText("Best:"); manBestLbl:SetTextColor(0.8, 0.8, 0.8)
+local manualBestVal = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+manualBestVal:SetPoint("LEFT", manBestLbl, "RIGHT", 8, 0); manualBestVal:SetText("--")
 
-local honorVal   = MakeRow(frame, -345, "Current Honor:")
-local arenaAPVal = MakeRow(frame, -361, "Arena Points:")
-local resetVal   = MakeRow(frame, -377, "Reset In:")
+-- ── View Arena Gear Costs button ──────────────────────────
+local arenaGearBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+arenaGearBtn:SetSize(CW - 4, 24)
+arenaGearBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y_MBTN)
+arenaGearBtn:SetText("View Arena Gear Costs")
+arenaGearBtn:GetFontString():SetFontObject("GameFontNormalSmall")
+arenaGearBtn:SetScript("OnClick", function()
+    if arenaGearFrame:IsShown() then
+        arenaGearFrame:Hide()
+    else
+        arenaGearFrame:ClearAllPoints()
+        arenaGearFrame:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0)
+        arenaGearFrame:Show()
+    end
+end)
 
-MakeLine(frame, -393, 315)
-MakeHeader(frame, -399, "PvP Marks in Bags")
-MakeLine(frame, -413, 315)
+-- Rating Milestones
+MakeLine(frame,   Y_MILE_LINE0, CW, LC)
+MakeHeader(frame, Y_MILEHEAD,   "Rating Milestones", LC)
+MakeLine(frame,   Y_MILELINE1,  CW, LC)
+
+local function MilestoneRow(y, label, target)
+    local lbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    lbl:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, y)
+    lbl:SetText(label); lbl:SetTextColor(0.8, 0.8, 0.8)
+    local tgt = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    tgt:SetPoint("TOPLEFT", frame, "TOPLEFT", LC + 148, y)
+    tgt:SetText(string.format("|cffAAAAAA(need %d)|r", target))
+    local val = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    val:SetPoint("TOPLEFT", frame, "TOPLEFT", LC + 240, y)
+    val:SetText("--")
+    return val
+end
+
+local mileWeapon   = MilestoneRow(Y_MWEAPON,   "Weapon (1700):",   1700)
+local mileShoulder = MilestoneRow(Y_MSHOULDER,  "Shoulder (2000):", 2000)
+
+-- Weeks to Gear
+MakeLine(frame,   Y_GEAR_LINE,  CW, LC)
+MakeHeader(frame, Y_GEAR_HEAD,  "Weeks to Gear (S1 AP Cost)", LC)
+MakeLine(frame,   Y_GEAR_LINE2, CW, LC)
+
+local GC = { name=LC, cost=LC+80, weeks=LC+158, note=LC+230 }
+SmallHdr(GC.name,  Y_GEAR_COLHDR, "Item")
+SmallHdr(GC.cost,  Y_GEAR_COLHDR, "Cost")
+SmallHdr(GC.weeks, Y_GEAR_COLHDR, "ETA")
+SmallHdr(GC.note,  Y_GEAR_COLHDR, "Status")
+MakeLine(frame, Y_GEAR_LINE3, CW, LC)
+
+local gearRows = {}
+for i, item in ipairs(GEAR_ITEMS) do
+    local y = Y_GEAR_START - (i - 1) * 16
+    local namFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    namFS:SetPoint("TOPLEFT", frame, "TOPLEFT", GC.name, y)
+    namFS:SetText(item.name); namFS:SetTextColor(0.8, 0.8, 0.8)
+    local costFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    costFS:SetPoint("TOPLEFT", frame, "TOPLEFT", GC.cost, y)
+    costFS:SetText("|cffAAAAAA" .. item.cost .. "|r")
+    local weeksFS = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    weeksFS:SetPoint("TOPLEFT", frame, "TOPLEFT", GC.weeks, y)
+    weeksFS:SetText("--")
+    local notesFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    notesFS:SetPoint("TOPLEFT", frame, "TOPLEFT", GC.note, y)
+    notesFS:SetText("")
+    gearRows[i] = { weeksFS=weeksFS, notesFS=notesFS, item=item }
+end
+
+-- ══════════════════════════════════════════════════════════════
+-- RIGHT COLUMN — HONOR
+-- ══════════════════════════════════════════════════════════════
+local function RCLine(y)   MakeLine(frame, y, CW, RC) end
+local function RCHead(y,t) MakeHeader(frame, y, t, RC) end
+
+RCHead(Y_RHEAD,  "Honor")
+RCLine(Y_RLINE1)
+
+local honorVal   = Row2(RC, Y_RHONOR,  "Current Honor:")
+local resetVal   = Row2(RC, Y_RRESET,  "Reset In:")
+local arenaAPVal = Row2(RC, Y_RAP,     "Arena Points:")
+
+RCLine(Y_RLINE2)
+local honorBarBG = frame:CreateTexture(nil, "BACKGROUND")
+honorBarBG:SetSize(BAR_W, 16)
+honorBarBG:SetPoint("TOPLEFT", frame, "TOPLEFT", RC, Y_RBAR)
+honorBarBG:SetColorTexture(0.12, 0.12, 0.12, 0.9)
+
+local honorBarFill = frame:CreateTexture(nil, "ARTWORK")
+honorBarFill:SetSize(1, 16)
+honorBarFill:SetPoint("TOPLEFT", honorBarBG, "TOPLEFT", 0, 0)
+honorBarFill:SetColorTexture(0.85, 0.75, 0.1, 1)
+
+local honorBarText = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+honorBarText:SetPoint("CENTER", honorBarBG, "CENTER", 0, 0)
+honorBarText:SetText("0 / 75,000")
+
+local honorCapWarn = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+honorCapWarn:SetPoint("TOPLEFT", frame, "TOPLEFT", RC, Y_RWARN)
+honorCapWarn:SetText("")
+
+-- PvP Marks
+RCLine(Y_RLINE3)
+RCHead(Y_RMARKHEAD, "PvP Marks in Bags")
+RCLine(Y_RMARKLINE)
 
 local marksVal = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-marksVal:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -419)
+marksVal:SetPoint("TOPLEFT", frame, "TOPLEFT", RC, -2000)
 marksVal:SetText("--"); marksVal:SetJustifyH("LEFT")
 
--- ============================================================
--- HISTORY FRAME
--- ============================================================
-hFrame = CreateFrame("Frame", "BeanArenaHistoryFrame", UIParent, "BackdropTemplate")
-hFrame:SetBackdrop({
-    bgFile   = "Interface\\Buttons\\WHITE8X8",
-    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-    tile = false, tileSize = 32, edgeSize = 26,
-    insets = { left=8, right=8, top=8, bottom=8 },
-})
-hFrame:SetBackdropColor(0, 0, 0, 1)
-hFrame:SetBackdropBorderColor(0.4, 0.35, 0.25, 1)
-hFrame:SetSize(DB("historyW"), DB("historyH"))
-hFrame:SetResizable(true)
-hFrame:SetFrameStrata("HIGH")
-hFrame:SetMovable(true); hFrame:EnableMouse(true)
-hFrame:RegisterForDrag("LeftButton")
-hFrame:SetScript("OnDragStart", hFrame.StartMoving)
-hFrame:SetScript("OnDragStop", function(self)
-    self:StopMovingOrSizing()
-    local x, y = self:GetCenter(); SetDB("historyX", x); SetDB("historyY", y)
-end)
-hFrame:Hide()
-RegisterEsc(hFrame)
+local mkAV   = Row2(RC, Y_RAVMARKS,  "AV:")
+local mkWSG  = Row2(RC, Y_RWSGMARKS, "WSG:")
+local mkAB   = Row2(RC, Y_RABMARKS,  "AB:")
+local mkEotS = Row2(RC, Y_REOTS,     "EotS:")
 
--- Resize grip
-local resizeGrip = CreateFrame("Button", nil, hFrame)
-resizeGrip:SetSize(16, 16)
-resizeGrip:SetPoint("BOTTOMRIGHT", hFrame, "BOTTOMRIGHT", -4, 4)
-resizeGrip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-resizeGrip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-resizeGrip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-resizeGrip:SetScript("OnMouseDown", function() hFrame:StartSizing("BOTTOMRIGHT") end)
-resizeGrip:SetScript("OnMouseUp", function()
-    hFrame:StopMovingOrSizing()
-    SetDB("historyW", math.floor(hFrame:GetWidth()))
-    SetDB("historyH", math.floor(hFrame:GetHeight()))
-    BeanArena_RefreshHistory()
-end)
+-- Weekly Honor Plan
+RCLine(Y_RLINE4)
+RCHead(Y_RPLANHEAD, "Weekly Honor Plan")
+RCLine(Y_RPLANLINE)
 
--- Title
-local hTitle = hFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-hTitle:SetPoint("TOP", hFrame, "TOP", 0, -14)
-hTitle:SetText("|cffFFD700Arena History|r")
+local honorPlanText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+honorPlanText:SetPoint("TOPLEFT", frame, "TOPLEFT", RC, Y_RPLAN)
+honorPlanText:SetWidth(CW - 8); honorPlanText:SetJustifyH("LEFT")
+honorPlanText:SetText("--")
 
--- Close
-local hClose = CreateFrame("Button", nil, hFrame, "UIPanelCloseButton")
-hClose:SetPoint("TOPRIGHT", hFrame, "TOPRIGHT", -4, -4)
-hClose:SetScript("OnClick", function() hFrame:Hide() end)
-
--- ── FILTER BAR ────────────────────────────────────────────
--- Bracket filter buttons
-local filterY = -36
-local function MakeFilterBtn(label, xOff, dbKey, value, group)
-    local b = CreateFrame("Button", nil, hFrame, "UIPanelButtonTemplate")
-    b:SetSize(52, 20); b:SetText(label)
-    b:GetFontString():SetFontObject("GameFontNormalSmall")
-    b:SetPoint("TOPLEFT", hFrame, "TOPLEFT", xOff, filterY)
-    b.dbKey = dbKey; b.value = value; b.group = group
-
-    local function UpdateHighlight()
-        if DB(dbKey) == value then
-            b:GetFontString():SetTextColor(1, 1, 0)
-        else
-            b:GetFontString():SetTextColor(1, 1, 1)
-        end
+-- ── View Honor Gear Costs button ──────────────────────────
+local honorGearBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+honorGearBtn:SetSize(CW - 4, 24)
+honorGearBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", RC, Y_RBTN)
+honorGearBtn:SetText("View Honor Gear Costs")
+honorGearBtn:GetFontString():SetFontObject("GameFontNormalSmall")
+honorGearBtn:SetScript("OnClick", function()
+    if honorGearFrame:IsShown() then
+        honorGearFrame:Hide()
+    else
+        honorGearFrame:ClearAllPoints()
+        honorGearFrame:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0)
+        honorGearFrame:Show()
     end
-    b:SetScript("OnClick", function()
-        SetDB(dbKey, value)
-        -- refresh all buttons in same group
-        if group then
-            for _, gb in ipairs(group) do
-                if gb.UpdateHighlight then gb:UpdateHighlight() end
+end)
+
+-- Honor Gear Progress (live tracker)
+RCLine(Y_RLINE5)
+RCHead(Y_RGEARHD, "Honor Gear Progress")
+RCLine(Y_RGEARLINE)
+
+local HGC = { slot=RC, marks=RC+50, honor=RC+188, status=RC+295 }
+SmallHdr(HGC.slot,   Y_HGCOLHDR, "Slot")
+SmallHdr(HGC.marks,  Y_HGCOLHDR, "Marks Needed")
+SmallHdr(HGC.honor,  Y_HGCOLHDR, "Honor")
+SmallHdr(HGC.status, Y_HGCOLHDR, "Ready?")
+MakeLine(frame, Y_HGLINE, CW, RC)
+
+local honorGearRows = {}
+for i, gear in ipairs(HONOR_GEAR_FULL) do
+    local y = Y_HGSTART - (i - 1) * 18
+    local slotFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    slotFS:SetPoint("TOPLEFT", frame, "TOPLEFT", HGC.slot, y)
+    slotFS:SetText(gear.slot); slotFS:SetTextColor(0.85, 0.85, 0.85)
+    local marksFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    marksFS:SetPoint("TOPLEFT", frame, "TOPLEFT", HGC.marks, y)
+    marksFS:SetText("--")
+    local honorFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    honorFS:SetPoint("TOPLEFT", frame, "TOPLEFT", HGC.honor, y)
+    honorFS:SetText("--")
+    local statusFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    statusFS:SetPoint("TOPLEFT", frame, "TOPLEFT", HGC.status, y)
+    statusFS:SetText("--")
+    honorGearRows[i] = { gear=gear, marksFS=marksFS, honorFS=honorFS, statusFS=statusFS }
+end
+
+-- ============================================================
+-- POPUP: ARENA GEAR COSTS
+-- ============================================================
+do
+    local PW       = 360
+    local NUM      = #ARENA_GEAR_FULL
+    local ROW_H    = 18
+    local PH       = 80 + NUM * ROW_H + 20
+    local INNER_W  = PW - 32
+    local AGC      = { slot=18, ap=200, rating=280 }
+
+    arenaGearFrame = MakeBGFrame("BeanArenaArenaGearFrame", UIParent, PW, PH)
+    arenaGearFrame:SetFrameStrata("HIGH")
+    arenaGearFrame:SetMovable(true); arenaGearFrame:EnableMouse(true)
+    arenaGearFrame:RegisterForDrag("LeftButton")
+    arenaGearFrame:SetScript("OnDragStart", arenaGearFrame.StartMoving)
+    arenaGearFrame:SetScript("OnDragStop",  function(s) s:StopMovingOrSizing() end)
+    arenaGearFrame:Hide()
+    RegisterEsc(arenaGearFrame)
+
+    -- Title
+    local t = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    t:SetPoint("TOP", arenaGearFrame, "TOP", 0, -14)
+    t:SetText("|cffFFD700Arena Gear Costs|r")
+
+    local c = CreateFrame("Button", nil, arenaGearFrame, "UIPanelCloseButton")
+    c:SetPoint("TOPRIGHT", arenaGearFrame, "TOPRIGHT", -4, -4)
+    c:SetScript("OnClick", function() arenaGearFrame:Hide() end)
+
+    local sub = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sub:SetPoint("TOP", arenaGearFrame, "TOP", 0, -30)
+    sub:SetText("|cffAAAAAASeason 1  —  Arena Points required|r")
+
+    MakeLine(arenaGearFrame, -42, INNER_W, 16)
+
+    -- Column headers
+    local function AGHdr(x, y, txt)
+        local f = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        f:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", x, y)
+        f:SetText("|cffAAAAAA" .. txt .. "|r")
+    end
+    AGHdr(AGC.slot,   -50, "Item Slot")
+    AGHdr(AGC.ap,     -50, "AP Cost")
+    AGHdr(AGC.rating, -50, "Min Rating")
+    MakeLine(arenaGearFrame, -61, INNER_W, 16)
+
+    local agRows = {}
+    for i, item in ipairs(ARENA_GEAR_FULL) do
+        local y = -70 - (i - 1) * ROW_H
+
+        local slotFS = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        slotFS:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", AGC.slot, y)
+        slotFS:SetText(item.slot); slotFS:SetTextColor(0.85, 0.85, 0.85)
+
+        local apFS = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        apFS:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", AGC.ap, y)
+        apFS:SetText(string.format("|cffFFD700%d|r", item.ap))
+
+        local ratingFS = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        ratingFS:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", AGC.rating, y)
+        ratingFS:SetText(item.rating > 0 and tostring(item.rating) or "|cff666666None|r")
+
+        agRows[i] = { ratingFS=ratingFS, item=item }
+    end
+
+    MakeLine(arenaGearFrame, -70 - NUM * ROW_H, INNER_W, 16)
+
+    local foot = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    foot:SetPoint("BOTTOMLEFT", arenaGearFrame, "BOTTOMLEFT", 18, 10)
+    foot:SetText("|cff888888Rating shown in |cffFF4444red|r|cff888888 if you don't currently meet it.|r")
+
+    -- Refresh: color rating by player's best
+    BeanArena_RefreshArenaGearPopup = function()
+        local r2, r3, r5 = GetLiveRatings()
+        local best = math.max(r2, r3, r5)
+        for _, row in ipairs(agRows) do
+            if row.item.rating > 0 then
+                if best >= row.item.rating then
+                    row.ratingFS:SetText(string.format("|cff00FF00%d|r", row.item.rating))
+                else
+                    row.ratingFS:SetText(string.format("|cffFF4444%d|r", row.item.rating))
+                end
             end
         end
-        BeanArena_RefreshHistory()
-    end)
-    b.UpdateHighlight = UpdateHighlight
-    UpdateHighlight()
-    return b
-end
-
-local bracketGroup = {}
-local resultGroup  = {}
-
-local bfAll  = MakeFilterBtn("All",  18, "histFilter", "ALL",  bracketGroup)
-local bf2v2  = MakeFilterBtn("2v2",  74, "histFilter", "2v2",  bracketGroup)
-local bf3v3  = MakeFilterBtn("3v3", 130, "histFilter", "3v3",  bracketGroup)
-local bf5v5  = MakeFilterBtn("5v5", 186, "histFilter", "5v5",  bracketGroup)
-bracketGroup[1]=bfAll; bracketGroup[2]=bf2v2; bracketGroup[3]=bf3v3; bracketGroup[4]=bf5v5
-
-local rfAll  = MakeFilterBtn("All",  260, "histResultFilter", "ALL",  resultGroup)
-local rfWin  = MakeFilterBtn("Wins", 316, "histResultFilter", "WIN",  resultGroup)
-local rfLoss = MakeFilterBtn("Loss", 372, "histResultFilter", "LOSS", resultGroup)
-resultGroup[1]=rfAll; resultGroup[2]=rfWin; resultGroup[3]=rfLoss
-
--- Filter labels
-local bfLbl = hFrame:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-bfLbl:SetPoint("TOPLEFT",hFrame,"TOPLEFT",18,-24); bfLbl:SetText("|cffAAAAAA Bracket:|r")
-local rfLbl = hFrame:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-rfLbl:SetPoint("TOPLEFT",hFrame,"TOPLEFT",260,-24); rfLbl:SetText("|cffAAAAAA Result:|r")
-
--- Divider below filter bar
-local filterDiv = hFrame:CreateTexture(nil,"ARTWORK")
-filterDiv:SetHeight(1)
-filterDiv:SetPoint("TOPLEFT", hFrame,"TOPLEFT",18,-60)
-filterDiv:SetPoint("TOPRIGHT",hFrame,"TOPRIGHT",-18,-60)
-filterDiv:SetColorTexture(0.4,0.4,0.4,0.7)
-
--- Column headers (anchored to hFrame, static)
--- Layout: Date | Bracket | Result | Time | Friendly | Opponent | Note
--- We'll position Friendly/Opponent/Note dynamically in RefreshHistory
-local HDR_Y = -68
-local H_COL_DATE     = 18
-local H_COL_BRACKET  = 96
-local H_COL_RESULT   = 148
-local H_COL_TIME     = 200
-local H_COL_FRIENDLY = 250
--- opponent and note cols set in refresh
-
-local function StaticHdr(x, txt)
-    local f = hFrame:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-    f:SetPoint("TOPLEFT",hFrame,"TOPLEFT",x,HDR_Y)
-    f:SetText("|cffAAAAAA"..txt.."|r")
-    return f
-end
-StaticHdr(H_COL_DATE,    "Date")
-StaticHdr(H_COL_BRACKET, "Bracket")
-StaticHdr(H_COL_RESULT,  "Result")
-StaticHdr(H_COL_TIME,    "Time")
-StaticHdr(H_COL_FRIENDLY,"Friendly")
-local oppHdrFS  = StaticHdr(0, "Opponent")
-local noteHdrFS = StaticHdr(0, "Note")
-
-local hDivLine2 = hFrame:CreateTexture(nil,"ARTWORK")
-hDivLine2:SetHeight(1)
-hDivLine2:SetPoint("TOPLEFT", hFrame,"TOPLEFT",18,-80)
-hDivLine2:SetPoint("TOPRIGHT",hFrame,"TOPRIGHT",-18,-80)
-hDivLine2:SetColorTexture(0.5,0.5,0.5,0.8)
-
--- Scroll
-local hScroll = CreateFrame("ScrollFrame","BeanArenaHistScroll",hFrame,"UIPanelScrollFrameTemplate")
-hScroll:SetPoint("TOPLEFT",  hFrame,"TOPLEFT",  14,-84)
-hScroll:SetPoint("BOTTOMRIGHT",hFrame,"BOTTOMRIGHT",-30,38)
-
-local hContent = CreateFrame("Frame",nil,hScroll)
-hContent:SetWidth(1); hContent:SetHeight(10)
-hScroll:SetScrollChild(hContent)
-
-local clearBtn = MakeSmallButton(hFrame,110,22,"Clear History")
-clearBtn:SetPoint("BOTTOMLEFT",hFrame,"BOTTOMLEFT",14,10)
-clearBtn:SetScript("OnClick",function()
-    local db = CharDB()
-    if db then db.arenaHistory = {} end
-    BeanArena_RefreshHistory()
-    print("|cffFFD700[BeanArena]|r History cleared.")
-end)
-
--- Pool of row frames
-local historyRowPool = {}
-
-local ICON_SIZE  = 14
-local ROW_LINE_H = 16
-
-local function DrawMember(parent, x, y, member, maxNameW)
-    local cls = member.class or "UNKNOWN"
-    local tc  = CLASS_ICON_TCOORDS[cls]
-    if tc then
-        local tex = parent:CreateTexture(nil,"OVERLAY")
-        tex:SetSize(ICON_SIZE, ICON_SIZE)
-        tex:SetPoint("TOPLEFT",parent,"TOPLEFT",x,y-1)
-        tex:SetTexture(CLASS_ICON_TEX)
-        tex:SetTexCoord(tc[1],tc[2],tc[3],tc[4])
     end
-    local nfs = parent:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-    nfs:SetPoint("TOPLEFT",parent,"TOPLEFT",x+ICON_SIZE+2,y)
-    local color = CLASS_COLORS[cls] or "AAAAAA"
-    nfs:SetText(string.format("|cff%s%s|r",color,member.name or "?"))
-    nfs:SetWidth(maxNameW)
-    nfs:SetJustifyH("LEFT")
-    nfs:SetWordWrap(false)
-end
-
--- Active note editbox (only one at a time)
-local activeNoteEB = nil
-
-local function MakeNoteCell(row, x, rowH, entryIdx)
-    local noteEB = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
-    noteEB:SetSize(120, 16)
-    noteEB:SetPoint("TOPLEFT", row, "TOPLEFT", x, -2)
-    noteEB:SetAutoFocus(false)
-    noteEB:SetMaxLetters(80)
-    noteEB:SetFontObject("GameFontNormalSmall")
-    local entry = CharHistory()[entryIdx]
-    noteEB:SetText(entry and entry.note or "")
-
-    noteEB:SetScript("OnEditFocusGained", function(self)
-        if activeNoteEB and activeNoteEB ~= self then activeNoteEB:ClearFocus() end
-        activeNoteEB = self
-    end)
-    noteEB:SetScript("OnEnterPressed", function(self)
-        if CharHistory()[entryIdx] then
-            CharHistory()[entryIdx].note = self:GetText()
-        end
-        self:ClearFocus()
-    end)
-    noteEB:SetScript("OnEditFocusLost", function(self)
-        if CharHistory()[entryIdx] then
-            CharHistory()[entryIdx].note = self:GetText()
-        end
-        if activeNoteEB == self then activeNoteEB = nil end
-    end)
-    noteEB:SetScript("OnEscapePressed", function(self)
-        self:SetText(CharHistory()[entryIdx] and CharHistory()[entryIdx].note or "")
-        self:ClearFocus()
-    end)
-    return noteEB
-end
-
-function BeanArena_RefreshHistory()
-    for _, r in ipairs(historyRowPool) do r:Hide() end
-    historyRowPool = {}
-
-    -- Refresh filter button highlights
-    for _, b in ipairs(bracketGroup) do if b.UpdateHighlight then b:UpdateHighlight() end end
-    for _, b in ipairs(resultGroup)  do if b.UpdateHighlight then b:UpdateHighlight() end end
-
-    local hist    = CharHistory()
-    local bFilter = DB("histFilter")
-    local rFilter = DB("histResultFilter")
-
-    -- Build filtered list (preserve original indices for note editing)
-    local filtered = {}
-    for i, entry in ipairs(hist) do
-        local bMatch = (bFilter == "ALL") or (entry.bracket == bFilter)
-        local rMatch = (rFilter == "ALL")
-            or (rFilter == "WIN"  and entry.won  == true)
-            or (rFilter == "LOSS" and entry.won  == false)
-        if bMatch and rMatch then
-            table.insert(filtered, { idx=i, entry=entry })
-        end
-    end
-
-    -- Dynamic column layout from frame width
-    local fw       = math.floor(hFrame:GetWidth())
-    local innerW   = fw - 50
-    local fixedW   = H_COL_FRIENDLY + 4   -- space used by fixed cols
-    local remaining = innerW - fixedW
-    -- Split: 38% friendly, 38% opponent, 24% note
-    local teamW  = math.floor(remaining * 0.38)
-    local noteW  = math.max(90, remaining - teamW * 2 - 8)
-    local oppX   = H_COL_FRIENDLY + teamW + 6
-    local noteX  = oppX + teamW + 6
-
-    -- Reposition dynamic headers
-    oppHdrFS:ClearAllPoints()
-    oppHdrFS:SetPoint("TOPLEFT",hFrame,"TOPLEFT",oppX,HDR_Y)
-    noteHdrFS:ClearAllPoints()
-    noteHdrFS:SetPoint("TOPLEFT",hFrame,"TOPLEFT",noteX,HDR_Y)
-
-    hContent:SetWidth(innerW)
-
-    if #filtered == 0 then
-        hContent:SetHeight(50)
-        local r = CreateFrame("Frame",nil,hContent)
-        r:SetSize(innerW,40); r:SetPoint("TOPLEFT",hContent,"TOPLEFT",0,0)
-        local fs = r:CreateFontString(nil,"OVERLAY","GameFontNormal")
-        fs:SetPoint("TOPLEFT",r,"TOPLEFT",10,-12)
-        local msg = #hist == 0
-            and "|cff888888No arena games recorded yet. Play arenas and they will appear here.|r"
-            or  "|cff888888No games match current filters.|r"
-        fs:SetText(msg)
-        table.insert(historyRowPool,r)
-        return
-    end
-
-    local totalH = 0
-    for i, item in ipairs(filtered) do
-        if i > 100 then break end
-        local entry   = item.entry
-        local origIdx = item.idx
-
-        local teamSize = math.max(
-            entry.friendly  and #entry.friendly  or 0,
-            entry.opponent  and #entry.opponent  or 0,
-            entry.enemy     and #entry.enemy     or 0,
-            1
-        )
-        local rowH = teamSize * ROW_LINE_H + 10
-
-        local row = CreateFrame("Frame",nil,hContent)
-        row:SetSize(innerW, rowH)
-        row:SetPoint("TOPLEFT",hContent,"TOPLEFT",0,-totalH)
-
-        if i % 2 == 0 then
-            local bg = row:CreateTexture(nil,"BACKGROUND")
-            bg:SetAllPoints(); bg:SetColorTexture(1,1,1,0.05)
-        end
-
-        -- Text cell helper: centered vertically in row
-        local function Cell(x, txt, w, centerY)
-            local f = row:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-            if centerY then
-                f:SetPoint("LEFT",row,"TOPLEFT",x, -rowH/2 + 6)
-            else
-                f:SetPoint("TOPLEFT",row,"TOPLEFT",x,-3)
-            end
-            f:SetText(txt); f:SetWidth(w)
-            f:SetJustifyH("LEFT"); f:SetWordWrap(false)
-        end
-
-        local resultColor = entry.won and "|cff00FF00Win|r" or "|cffFF4444Loss|r"
-        Cell(H_COL_DATE    - 18, entry.date    or "?",            76,  true)
-        Cell(H_COL_BRACKET - 18, entry.bracket or "?",            46,  true)
-        Cell(H_COL_RESULT  - 18, resultColor,                     44,  true)
-        Cell(H_COL_TIME    - 18, (function()
-            local s = entry.duration or 0
-            return s>0 and string.format("%d:%02d",math.floor(s/60),s%60) or "?"
-        end)(),                                                    42,  true)
-
-        local friendly = entry.friendly  or {}
-        local opponent = entry.opponent  or entry.enemy or {}
-
-        for idx, m in ipairs(friendly) do
-            DrawMember(row, H_COL_FRIENDLY-18, -2-(idx-1)*ROW_LINE_H, m, teamW-ICON_SIZE-4)
-        end
-        for idx, m in ipairs(opponent) do
-            DrawMember(row, oppX-18, -2-(idx-1)*ROW_LINE_H, m, teamW-ICON_SIZE-4)
-        end
-
-        -- Note editbox
-        MakeNoteCell(row, noteX-18, rowH, origIdx)
-
-        -- Divider
-        local div = row:CreateTexture(nil,"ARTWORK")
-        div:SetHeight(1)
-        div:SetPoint("BOTTOMLEFT",row,"BOTTOMLEFT",0,0)
-        div:SetPoint("BOTTOMRIGHT",row,"BOTTOMRIGHT",0,0)
-        div:SetColorTexture(0.25,0.25,0.25,0.5)
-
-        totalH = totalH + rowH
-        table.insert(historyRowPool, row)
-    end
-
-    hContent:SetHeight(totalH + 10)
-
-    -- Show total count vs filtered
-    local countStr = #filtered == #hist
-        and string.format("|cffAAAAAA%d games|r",#hist)
-        or  string.format("|cffAAAAAA%d of %d games|r",#filtered,#hist)
-    -- Reuse or create count label
-    if not hFrame.countFS then
-        hFrame.countFS = hFrame:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-        hFrame.countFS:SetPoint("BOTTOMRIGHT",hFrame,"BOTTOMRIGHT",-20,14)
-    end
-    hFrame.countFS:SetText(countStr)
-
-    if #hist > 100 then
-        local more = hContent:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-        more:SetPoint("TOPLEFT",hContent,"TOPLEFT",10,-(totalH+6))
-        more:SetText(string.format("|cff888888... %d more stored (showing latest 100 matching)|r",#hist-100))
-    end
+    arenaGearFrame:SetScript("OnShow", BeanArena_RefreshArenaGearPopup)
 end
 
 -- ============================================================
--- ASSIGN FORWARD DECLARATIONS
+-- POPUP: HONOR GEAR COSTS
+-- ============================================================
+do
+    local PW      = 500
+    local NUM     = #HONOR_GEAR_FULL
+    local ROW_H   = 18
+    local PH      = 80 + NUM * ROW_H + 20
+    local INNER_W = PW - 32
+    local HGP     = { slot=18, honor=110, marks=230, have=340 }
+
+    honorGearFrame = MakeBGFrame("BeanArenaHonorGearFrame", UIParent, PW, PH)
+    honorGearFrame:SetFrameStrata("HIGH")
+    honorGearFrame:SetMovable(true); honorGearFrame:EnableMouse(true)
+    honorGearFrame:RegisterForDrag("LeftButton")
+    honorGearFrame:SetScript("OnDragStart", honorGearFrame.StartMoving)
+    honorGearFrame:SetScript("OnDragStop",  function(s) s:StopMovingOrSizing() end)
+    honorGearFrame:Hide()
+    RegisterEsc(honorGearFrame)
+
+    local t = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    t:SetPoint("TOP", honorGearFrame, "TOP", 0, -14)
+    t:SetText("|cffFFD700Honor Gear Costs|r")
+
+    local c = CreateFrame("Button", nil, honorGearFrame, "UIPanelCloseButton")
+    c:SetPoint("TOPRIGHT", honorGearFrame, "TOPRIGHT", -4, -4)
+    c:SetScript("OnClick", function() honorGearFrame:Hide() end)
+
+    local sub = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sub:SetPoint("TOP", honorGearFrame, "TOP", 0, -30)
+    sub:SetText("|cffAAAAAASeason 1  —  Honor + BG Marks required|r")
+
+    MakeLine(honorGearFrame, -42, INNER_W, 16)
+
+    local function HGHdr(x, y, txt)
+        local f = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        f:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", x, y)
+        f:SetText("|cffAAAAAA" .. txt .. "|r")
+    end
+    HGHdr(HGP.slot,  -50, "Item Slot")
+    HGHdr(HGP.honor, -50, "Honor Cost")
+    HGHdr(HGP.marks, -50, "Marks Req.")
+    HGHdr(HGP.have,  -50, "You Have")
+    MakeLine(honorGearFrame, -61, INNER_W, 16)
+
+    local hgRows = {}
+    for i, gear in ipairs(HONOR_GEAR_FULL) do
+        local y = -70 - (i - 1) * ROW_H
+
+        local slotFS = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        slotFS:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", HGP.slot, y)
+        slotFS:SetText(gear.slot); slotFS:SetTextColor(0.85, 0.85, 0.85)
+
+        local honorFS = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        honorFS:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", HGP.honor, y)
+        honorFS:SetText(string.format("|cffFFD700%d|r", gear.honor))
+
+        -- Static marks requirement
+        local reqParts = {}
+        for bg, req in pairs(gear.marks) do
+            table.insert(reqParts, req .. " " .. bg)
+        end
+        table.sort(reqParts)
+        local marksReqFS = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        marksReqFS:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", HGP.marks, y)
+        marksReqFS:SetText("|cffAAAAAA" .. table.concat(reqParts, ", ") .. "|r")
+
+        -- Dynamic "You Have" column
+        local haveFS = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        haveFS:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", HGP.have, y)
+        haveFS:SetText("--")
+
+        hgRows[i] = { gear=gear, haveFS=haveFS }
+    end
+
+    MakeLine(honorGearFrame, -70 - NUM * ROW_H, INNER_W, 16)
+
+    local foot = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    foot:SetPoint("BOTTOMLEFT", honorGearFrame, "BOTTOMLEFT", 18, 10)
+    foot:SetText("|cff888888|cff00FF00Green|r|cff888888 = met.  |cffFF4444Red|r|cff888888 = still needed.|r")
+
+    BeanArena_RefreshHonorGearPopup = function()
+        local honor = GetCurrentHonor()
+        local marks = GetPvPMarkCounts()
+        local fmt   = BreakUpLargeNumbers or tostring
+
+        for _, row in ipairs(hgRows) do
+            local gear     = row.gear
+            local honorMet = honor >= gear.honor
+            local parts    = {}
+
+            for bg, req in pairs(gear.marks) do
+                local have = marks[bg] or 0
+                local met  = have >= req
+                table.insert(parts, string.format("%s|cffAAAAAA/%d %s|r",
+                    met  and string.format("|cff00FF00%d", have)
+                         or  string.format("|cffFF4444%d", have),
+                    req, bg))
+            end
+            table.sort(parts)
+
+            local hColor   = honorMet and "00FF00" or "FF4444"
+            local honorStr = string.format("|cff%s%s/%s hon|r  ",
+                hColor, fmt(honor), fmt(gear.honor))
+
+            row.haveFS:SetText(honorStr .. table.concat(parts, "  "))
+        end
+    end
+
+    honorGearFrame:SetScript("OnShow", BeanArena_RefreshHonorGearPopup)
+end
+
+-- ============================================================
+-- FORWARD DECLARATION ASSIGNMENT
 -- ============================================================
 OpenBeanArena = function()
     frame:Show(); BeanArena_RefreshFrame()
-end
-
-OpenHistory = function()
-    if hFrame:IsShown() then hFrame:Hide(); return end
-    if DB("historyX") and DB("historyY") then
-        hFrame:ClearAllPoints()
-        hFrame:SetPoint("CENTER",UIParent,"BOTTOMLEFT",DB("historyX"),DB("historyY"))
-    else
-        hFrame:SetPoint("CENTER",UIParent,"CENTER",220,0)
-    end
-    local w, h = BeanArenaDB.historyW, BeanArenaDB.historyH
-    if w and h then hFrame:SetSize(w,h) end
-    BeanArena_RefreshHistory()
-    hFrame:Show()
 end
 
 -- ============================================================
 -- COMMANDS FRAME
 -- ============================================================
 local COMMANDS_LIST = {
-    { cmd="/ap",          desc="Toggle main window" },
-    { cmd="/ap history",  desc="Toggle history window" },
-    { cmd="/ap commands", desc="Toggle this window" },
-    { cmd="/ap points",   desc="Print point breakdown" },
-    { cmd="/ap honor",    desc="Print current honor" },
+    { cmd="/ap",          desc="Toggle main window"     },
+    { cmd="/ap commands", desc="Toggle this window"     },
+    { cmd="/ap points",   desc="Print point breakdown"  },
+    { cmd="/ap honor",    desc="Print current honor"    },
     { cmd="/ap reset",    desc="Print time until reset" },
-    { cmd="/ap marks",    desc="Print BG mark counts" },
-    { cmd="/ap options",  desc="Open options menu" },
-    { cmd="/ap help",     desc="Print help" },
+    { cmd="/ap marks",    desc="Print BG mark counts"   },
+    { cmd="/ap options",  desc="Open options menu"      },
+    { cmd="/ap help",     desc="Print help"             },
 }
 
 cFrame = MakeBGFrame("BeanArenaCommandsFrame", UIParent, 310, 42 + #COMMANDS_LIST * 24)
@@ -1054,37 +1019,37 @@ cFrame:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
 cFrame:Hide()
 RegisterEsc(cFrame)
 
-local cTitle = cFrame:CreateFontString(nil,"OVERLAY","GameFontNormalLarge")
-cTitle:SetPoint("TOP",cFrame,"TOP",0,-14)
+local cTitle = cFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+cTitle:SetPoint("TOP", cFrame, "TOP", 0, -14)
 cTitle:SetText("|cffFFD700BeanArena Commands|r")
 
-local cClose = CreateFrame("Button",nil,cFrame,"UIPanelCloseButton")
-cClose:SetPoint("TOPRIGHT",cFrame,"TOPRIGHT",-4,-4)
-cClose:SetScript("OnClick",function() cFrame:Hide() end)
+local cClose = CreateFrame("Button", nil, cFrame, "UIPanelCloseButton")
+cClose:SetPoint("TOPRIGHT", cFrame, "TOPRIGHT", -4, -4)
+cClose:SetScript("OnClick", function() cFrame:Hide() end)
 
 for i, entry in ipairs(COMMANDS_LIST) do
-    local y = -38 - (i-1)*24
+    local y = -38 - (i - 1) * 24
     if i > 1 then
-        local div = cFrame:CreateTexture(nil,"ARTWORK")
-        div:SetSize(274,1); div:SetPoint("TOPLEFT",cFrame,"TOPLEFT",18,y+5)
-        div:SetColorTexture(0.3,0.3,0.3,0.3)
+        local div = cFrame:CreateTexture(nil, "ARTWORK")
+        div:SetSize(274, 1); div:SetPoint("TOPLEFT", cFrame, "TOPLEFT", 18, y + 5)
+        div:SetColorTexture(0.3, 0.3, 0.3, 0.3)
     end
-    local cmdFS = cFrame:CreateFontString(nil,"OVERLAY","GameFontNormal")
-    cmdFS:SetPoint("TOPLEFT",cFrame,"TOPLEFT",18,y)
-    cmdFS:SetText("|cff00CCFF"..entry.cmd.."|r")
-    local descFS = cFrame:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-    descFS:SetPoint("TOPLEFT",cFrame,"TOPLEFT",145,y)
-    descFS:SetText("|cffAAAAAA"..entry.desc.."|r")
+    local cmdFS = cFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    cmdFS:SetPoint("TOPLEFT", cFrame, "TOPLEFT", 18, y)
+    cmdFS:SetText("|cff00CCFF" .. entry.cmd .. "|r")
+    local descFS = cFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    descFS:SetPoint("TOPLEFT", cFrame, "TOPLEFT", 145, y)
+    descFS:SetText("|cffAAAAAA" .. entry.desc .. "|r")
 end
 
-local aliasFS = cFrame:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-aliasFS:SetPoint("BOTTOMLEFT",cFrame,"BOTTOMLEFT",18,10)
+local aliasFS = cFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+aliasFS:SetPoint("BOTTOMLEFT", cFrame, "BOTTOMLEFT", 18, 10)
 aliasFS:SetText("|cff888888/beanarena also works in place of /ap|r")
 
 OpenCommands = function()
     if cFrame:IsShown() then cFrame:Hide(); return end
     cFrame:ClearAllPoints()
-    cFrame:SetPoint("CENTER",UIParent,"CENTER",0,0)
+    cFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     cFrame:Show()
 end
 
@@ -1092,29 +1057,33 @@ end
 -- REFRESH FUNCTIONS
 -- ============================================================
 function BeanArena_RefreshManual()
-    local m2,m3,m5 = DB("manual2v2"),DB("manual3v3"),DB("manual5v5")
-    manualP2Val:SetText(m2>0 and string.format("|cffFFD700%.0f|r",CalcBracketPoints(m2,"2v2")) or "|cff666666--|r")
-    manualP3Val:SetText(m3>0 and string.format("|cffFFD700%.0f|r",CalcBracketPoints(m3,"3v3")) or "|cff666666--|r")
-    manualP5Val:SetText(m5>0 and string.format("|cffFFD700%.0f|r",CalcBracketPoints(m5,"5v5")) or "|cff666666--|r")
-    local mb,mbb = CalcBestPoints(m2,m3,m5)
-    manualBestVal:SetText(mb>0 and string.format("|cffFFD700%.0f|r |cffAAAAAA(%s)|r",mb,mbb) or "|cff666666Enter ratings above|r")
+    local m2, m3, m5 = DB("manual2v2"), DB("manual3v3"), DB("manual5v5")
+    local function FmtPts(r, bracket)
+        return r > 0
+            and string.format("|cffFFD700%.0f|r", CalcBracketPoints(r, bracket))
+            or  "|cff666666--|r"
+    end
+    manResultFS["2v2"]:SetText(FmtPts(m2, "2v2"))
+    manResultFS["3v3"]:SetText(FmtPts(m3, "3v3"))
+    manResultFS["5v5"]:SetText(FmtPts(m5, "5v5"))
+    local mb, mbb = CalcBestPoints(m2, m3, m5)
+    manualBestVal:SetText(mb > 0
+        and string.format("|cffFFD700%.0f|r |cffAAAAAA(%s)|r", mb, mbb)
+        or  "|cff666666Enter ratings above|r")
 end
 
 local function RefreshLive()
     local r2,r3,r5,g2,g3,g5 = GetLiveRatings()
     local curAP = GetCurrentArenaPoints()
-
-    local function GT(games)
-        return games>=10 and string.format("|cff00FF00%d (ok)|r",games)
-                          or  string.format("|cffFF4444%d/10|r",games)
+    local function GT(g)
+        return g >= 10 and string.format("|cff00FF00%d|r", g)
+                       or  string.format("|cffFF4444%d/10|r", g)
     end
-    local function ProjTxt(r, bracket)
-        if r<=0 then return "|cff666666--|r" end
-        return string.format("|cffFFD700%.0f|r",CalcBracketPoints(r,bracket))
+    local function ProjTxt(r, b)
+        return r > 0 and string.format("|cffFFD700%.0f|r", CalcBracketPoints(r, b)) or "|cff666666--|r"
     end
-    local function TotalTxt(r, bracket)
-        if r<=0 then return "|cff666666--|r" end
-        return string.format("|cff88FF88%.0f|r",CalcBracketPoints(r,bracket)+curAP)
+    local function TotalTxt(r, b)
+        return r > 0 and string.format("|cff88FF88%.0f|r", CalcBracketPoints(r, b) + curAP) or "|cff666666--|r"
     end
 
     liveR2:SetText(r2>0 and tostring(r2) or "|cff666666--|r")
@@ -1125,28 +1094,116 @@ local function RefreshLive()
     liveG5:SetText(GT(g5)); liveP5:SetText(ProjTxt(r5,"5v5")); livePT5:SetText(TotalTxt(r5,"5v5"))
 
     local er2=g2>=10 and r2 or 0; local er3=g3>=10 and r3 or 0; local er5=g5>=10 and r5 or 0
-    local best,bb = CalcBestPoints(er2,er3,er5)
-    liveBestVal:SetText(best>0
-        and string.format("|cffFFD700%.0f|r |cffAAAAAA(%s)|r",best,bb)
+    local best, bb = CalcBestPoints(er2, er3, er5)
+    liveBestVal:SetText(best > 0
+        and string.format("|cffFFD700%.0f|r |cffAAAAAA(%s)|r", best, bb)
         or  "|cffFF4444Need 10+ games in a bracket|r")
-    apInlineVal:SetText(curAP>0
-        and string.format("|cff88FF88%d|r",curAP)
+    apInlineVal:SetText(curAP > 0
+        and string.format("|cff88FF88%d|r", curAP)
         or  "|cff666666--|r")
 end
 
 local function RefreshMisc()
     local honor = GetCurrentHonor()
-    honorVal:SetText(string.format("|cffFFD700%s|r",
-        BreakUpLargeNumbers and BreakUpLargeNumbers(honor) or tostring(honor)))
-    local ap = GetCurrentArenaPoints()
-    arenaAPVal:SetText(string.format("|cff88FF88%s|r",
-        BreakUpLargeNumbers and BreakUpLargeNumbers(ap) or tostring(ap)))
-    resetVal:SetText("|cff00CCFF"..GetDaysToReset().."|r")
-    local marks = GetPvPMarkCounts(); local parts={}
-    for _,n in ipairs({"AV","WSG","AB","EotS"}) do
-        table.insert(parts,string.format("%s: |cffFFD700%d|r",n,marks[n] or 0))
+    local ap    = GetCurrentArenaPoints()
+    local fmt   = BreakUpLargeNumbers or tostring
+
+    honorVal:SetText(string.format("|cffFFD700%s|r", fmt(honor)))
+    arenaAPVal:SetText(string.format("|cff88FF88%s|r", fmt(ap)))
+    resetVal:SetText("|cff00CCFF" .. GetDaysToReset() .. "|r")
+
+    local marks = GetPvPMarkCounts()
+    mkAV:SetText(string.format("|cffFFD700%d|r",   marks.AV   or 0))
+    mkWSG:SetText(string.format("|cffFFD700%d|r",  marks.WSG  or 0))
+    mkAB:SetText(string.format("|cffFFD700%d|r",   marks.AB   or 0))
+    mkEotS:SetText(string.format("|cffFFD700%d|r", marks.EotS or 0))
+    local mparts = {}
+    for _, n in ipairs({"AV","WSG","AB","EotS"}) do
+        table.insert(mparts, string.format("%s:|cffFFD700%d|r", n, marks[n] or 0))
     end
-    marksVal:SetText(table.concat(parts,"  "))
+    marksVal:SetText(table.concat(mparts, "  "))
+
+    -- Honor bar
+    local honorPct = math.min(1, honor / HONOR_CAP)
+    honorBarFill:SetWidth(math.max(1, math.floor(BAR_W * honorPct)))
+    honorBarText:SetText(string.format("%s / 75,000  (%d%%)", fmt(honor), math.floor(honorPct * 100)))
+    if honor >= 70000 then
+        honorCapWarn:SetText("|cffFF4444Warning: Near cap — spend before 75k or gains are lost!|r")
+        honorBarFill:SetColorTexture(1, 0.2, 0.2, 1)
+    elseif honor >= 55000 then
+        honorCapWarn:SetText("|cffFFAA00Getting full — consider spending soon.|r")
+        honorBarFill:SetColorTexture(1, 0.7, 0.1, 1)
+    else
+        honorCapWarn:SetText("")
+        honorBarFill:SetColorTexture(0.85, 0.75, 0.1, 1)
+    end
+
+    -- Weekly plan
+    local toFill = math.max(0, HONOR_CAP - honor)
+    if toFill == 0 then
+        honorPlanText:SetText("|cff00FF00Honor capped! Time to spend.|r")
+    else
+        honorPlanText:SetText(string.format(
+            "|cffAAAAAA~%d AV wins to cap|r  |cff666666(or ~%d WSG/AB/EotS)|r",
+            math.ceil(toFill / 419), math.ceil(toFill / 209)))
+    end
+
+    -- Milestones
+    local r2b, r3b, r5b, g2b, g3b, g5b = GetLiveRatings()
+    local bestRating = math.max(r2b, r3b, r5b)
+    local function MilTxt(t)
+        return (t - bestRating) <= 0 and "|cff00FF00Unlocked!|r"
+                                      or  string.format("|cffFF4444+%d rating|r", t - bestRating)
+    end
+    mileWeapon:SetText(MilTxt(1700))
+    mileShoulder:SetText(MilTxt(2000))
+
+    -- Weeks to gear
+    local er2=g2b>=10 and r2b or 0; local er3=g3b>=10 and r3b or 0; local er5=g5b>=10 and r5b or 0
+    local weeklyAP = CalcBestPoints(er2, er3, er5)
+    for _, row in ipairs(gearRows) do
+        local item   = row.item
+        local canBuy = (item.rating == 0 or bestRating >= item.rating)
+        local needed = math.max(0, item.cost - ap)
+        if not canBuy then
+            row.weeksFS:SetText("|cff666666--|r")
+            row.notesFS:SetText(string.format("|cffFF4444need %d rating|r", item.rating))
+        elseif needed == 0 then
+            row.weeksFS:SetText("|cff00FF00Can buy!|r"); row.notesFS:SetText("")
+        elseif weeklyAP <= 0 then
+            row.weeksFS:SetText("|cffAAAAAA?|r"); row.notesFS:SetText("|cffAAAAAAneed 10 games|r")
+        else
+            local weeks = math.ceil(needed / weeklyAP)
+            row.weeksFS:SetText(string.format("|cffFFD700%d wk%s|r", weeks, weeks==1 and "" or "s"))
+            row.notesFS:SetText(string.format("|cffAAAAAA(%d short)|r", needed))
+        end
+    end
+
+    -- Honor Gear Progress (live tracker in main frame)
+    for _, row in ipairs(honorGearRows) do
+        local gear        = row.gear
+        local honorMet    = honor >= gear.honor
+        local allMarksMet = true
+        local markParts   = {}
+        for bg, required in pairs(gear.marks) do
+            local have = marks[bg] or 0
+            local met  = have >= required
+            if not met then allMarksMet = false end
+            table.insert(markParts, string.format("%s|cffAAAAAA/%d %s|r",
+                met  and string.format("|cff00FF00%d", have)
+                     or  string.format("|cffFF4444%d", have),
+                required, bg))
+        end
+        table.sort(markParts)
+        row.marksFS:SetText(table.concat(markParts, "  "))
+        local hc = honorMet and "00FF00" or "FF4444"
+        row.honorFS:SetText(string.format("|cff%s%s|r|cffAAAAAA/%s|r", hc, fmt(honor), fmt(gear.honor)))
+        row.statusFS:SetText(honorMet and allMarksMet and "|cff00FF00Ready!|r" or "|cffAAAAAA...|r")
+    end
+
+    -- Keep popups live
+    if arenaGearFrame:IsShown() then BeanArena_RefreshArenaGearPopup() end
+    if honorGearFrame:IsShown() then BeanArena_RefreshHonorGearPopup() end
 end
 
 function BeanArena_RefreshFrame()
@@ -1160,52 +1217,45 @@ end
 -- ============================================================
 -- SLASH COMMANDS
 -- ============================================================
-SLASH_BEANARENA1="/ap"; SLASH_BEANARENA2="/beanarena"
-SlashCmdList["BEANARENA"]=function(msg)
-    msg=msg:lower():trim()
-    if msg=="" or msg=="show" then
+SLASH_BEANARENA1 = "/ap"; SLASH_BEANARENA2 = "/beanarena"
+SlashCmdList["BEANARENA"] = function(msg)
+    msg = msg:lower():trim()
+    if msg == "" or msg == "show" then
         if frame:IsShown() then frame:Hide() else OpenBeanArena() end
-    elseif msg=="history" then
-        if hFrame:IsShown() then hFrame:Hide() else OpenHistory() end
-    elseif msg=="commands" then
+    elseif msg == "commands" then
         if cFrame:IsShown() then cFrame:Hide() else OpenCommands() end
-    elseif msg=="points" or msg=="rating" then
-        local r2,r3,r5,g2,g3,g5=GetLiveRatings()
-        local curAP=GetCurrentArenaPoints()
+    elseif msg == "points" or msg == "rating" then
+        local r2,r3,r5,g2,g3,g5 = GetLiveRatings()
+        local curAP = GetCurrentArenaPoints()
         local er2=g2>=10 and r2 or 0; local er3=g3>=10 and r3 or 0; local er5=g5>=10 and r5 or 0
-        local best,bb=CalcBestPoints(er2,er3,er5)
-        print(string.format("|cffFFD700[BeanArena]|r Ratings  (Banked AP: |cff88FF88%d|r)",curAP))
-        print(string.format("  2v2: %d  %dg  proj:|cffFFD700%.0f|r  total:|cff88FF88%.0f|r  %s",r2,g2,CalcBracketPoints(r2,"2v2"),CalcBracketPoints(r2,"2v2")+curAP,g2>=10 and "|cff00FF00(ok)|r" or "|cffFF4444need 10|r"))
-        print(string.format("  3v3: %d  %dg  proj:|cffFFD700%.0f|r  total:|cff88FF88%.0f|r  %s",r3,g3,CalcBracketPoints(r3,"3v3"),CalcBracketPoints(r3,"3v3")+curAP,g3>=10 and "|cff00FF00(ok)|r" or "|cffFF4444need 10|r"))
-        print(string.format("  5v5: %d  %dg  proj:|cffFFD700%.0f|r  total:|cff88FF88%.0f|r  %s",r5,g5,CalcBracketPoints(r5,"5v5"),CalcBracketPoints(r5,"5v5")+curAP,g5>=10 and "|cff00FF00(ok)|r" or "|cffFF4444need 10|r"))
-        print(best>0 and string.format("  Best: |cffFFD700%.0f|r from |cffFFD700%s|r",best,bb) or "  |cffFF4444No eligible bracket|r")
-    elseif msg=="honor" then
-        print(string.format("|cffFFD700[BeanArena]|r Honor: |cffFFD700%d|r",GetCurrentHonor()))
-    elseif msg=="reset" then
-        print("|cffFFD700[BeanArena]|r Reset in: |cff00CCFF"..GetDaysToReset().."|r")
-    elseif msg=="marks" then
-        local m=GetPvPMarkCounts(); print("|cffFFD700[BeanArena]|r Marks:")
-        for n,c in pairs(m) do print("  "..n..": |cffFFD700"..c.."|r") end
-    elseif msg=="options" then ShowOptions()
-    elseif msg=="debug" then
+        local best, bb = CalcBestPoints(er2, er3, er5)
+        print(string.format("|cffFFD700[BeanArena]|r Ratings  (Banked AP: |cff88FF88%d|r)", curAP))
+        print(string.format("  2v2: %d  %dg  proj:|cffFFD700%.0f|r  total:|cff88FF88%.0f|r  %s", r2,g2,CalcBracketPoints(r2,"2v2"),CalcBracketPoints(r2,"2v2")+curAP,g2>=10 and "|cff00FF00(ok)|r" or "|cffFF4444need 10|r"))
+        print(string.format("  3v3: %d  %dg  proj:|cffFFD700%.0f|r  total:|cff88FF88%.0f|r  %s", r3,g3,CalcBracketPoints(r3,"3v3"),CalcBracketPoints(r3,"3v3")+curAP,g3>=10 and "|cff00FF00(ok)|r" or "|cffFF4444need 10|r"))
+        print(string.format("  5v5: %d  %dg  proj:|cffFFD700%.0f|r  total:|cff88FF88%.0f|r  %s", r5,g5,CalcBracketPoints(r5,"5v5"),CalcBracketPoints(r5,"5v5")+curAP,g5>=10 and "|cff00FF00(ok)|r" or "|cffFF4444need 10|r"))
+        print(best > 0 and string.format("  Best: |cffFFD700%.0f|r from |cffFFD700%s|r", best, bb) or "  |cffFF4444No eligible bracket|r")
+    elseif msg == "honor" then
+        print(string.format("|cffFFD700[BeanArena]|r Honor: |cffFFD700%d|r", GetCurrentHonor()))
+    elseif msg == "reset" then
+        print("|cffFFD700[BeanArena]|r Reset in: |cff00CCFF" .. GetDaysToReset() .. "|r")
+    elseif msg == "marks" then
+        local m = GetPvPMarkCounts()
+        print("|cffFFD700[BeanArena]|r Marks:")
+        for n, c in pairs(m) do print("  " .. n .. ": |cffFFD700" .. c .. "|r") end
+    elseif msg == "options" then ShowOptions()
+    elseif msg == "debug" then
         print("|cffFFD700[BeanArena]|r === DEBUG ===")
-        print("PVPFrame exists: " .. tostring(PVPFrame ~= nil))
-        print("CharacterFrame exists: " .. tostring(CharacterFrame ~= nil))
+        print("PVPFrame: " .. tostring(PVPFrame ~= nil))
+        print("CharacterFrame: " .. tostring(CharacterFrame ~= nil))
         if CharacterFrame then
             for i = 1, 10 do
-                local tab = _G["CharacterFrameTab"..i]
-                if tab then
-                    print(string.format("  Tab%d = '%s'", i, tab:GetText() or "(nil)"))
-                end
+                local tab = _G["CharacterFrameTab" .. i]
+                if tab then print(string.format("  Tab%d='%s'", i, tab:GetText() or "(nil)")) end
             end
-        else
-            print("  Open your Character Sheet first, then run /ap debug again")
         end
-        print("(PVP button removed)")
-    elseif msg=="help" then
+    elseif msg == "help" then
         print("|cffFFD700[BeanArena]|r Commands:")
         print("  /ap              - Toggle main window")
-        print("  /ap history      - Toggle history window")
         print("  /ap commands     - Toggle commands window")
         print("  /ap points       - Print point breakdown")
         print("  /ap honor        - Print current honor")
@@ -1221,201 +1271,61 @@ end
 -- ============================================================
 -- EVENTS
 -- ============================================================
-local eFrame=CreateFrame("Frame")
+local eFrame = CreateFrame("Frame")
 eFrame:RegisterEvent("ADDON_LOADED")
 eFrame:RegisterEvent("PLAYER_LOGIN")
 eFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-eFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 eFrame:RegisterEvent("UPDATE_BATTLEFIELD_STATUS")
-eFrame:RegisterEvent("UPDATE_BATTLEFIELD_SCORE")
--- Snapshot opponents on unit change (catches before they leave after death)
-eFrame:RegisterEvent("ARENA_OPPONENT_UPDATE")
-eFrame:RegisterEvent("UNIT_HEALTH")
-eFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 
-eFrame:SetScript("OnEvent",function(self,event,arg1)
-    if event=="ADDON_LOADED" and arg1==ADDON_NAME then
+eFrame:SetScript("OnEvent", function(self, event, arg1)
+    if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         if DB("frameX") and DB("frameY") then
             frame:ClearAllPoints()
-            frame:SetPoint("CENTER",UIParent,"BOTTOMLEFT",DB("frameX"),DB("frameY"))
+            frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", DB("frameX"), DB("frameY"))
         else
-            frame:SetPoint("CENTER",UIParent,"CENTER",0,0)
-        end
-        if DB("historyX") and DB("historyY") then
-            hFrame:ClearAllPoints()
-            hFrame:SetPoint("CENTER",UIParent,"BOTTOMLEFT",DB("historyX"),DB("historyY"))
-        else
-            hFrame:SetPoint("CENTER",UIParent,"CENTER",220,0)
+            frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
         end
         UpdateMinimapPos()
         SetupHonorHook()
         print("|cffFFD700[BeanArena]|r Loaded! /ap help for commands.")
-
-    elseif event=="PLAYER_LOGIN" then
-        -- Set per-character key (UnitName is valid here, unlike ADDON_LOADED)
-        local name  = UnitName("player") or "Unknown"
-        local realm = GetRealmName and GetRealmName() or "Unknown"
-        currentCharKey = name .. "-" .. realm
-
-        -- Migrate old flat arenaHistory (pre-v1.4) into chars table
-        if BeanArenaDB.arenaHistory and #BeanArenaDB.arenaHistory > 0 then
-            local hist = CharHistory()
-            print(string.format("|cffFFD700[BeanArena]|r Migrating %d games for %s.",
-                #BeanArenaDB.arenaHistory, currentCharKey))
-            for _,e in ipairs(BeanArenaDB.arenaHistory) do
-                table.insert(hist, e)
-            end
-            BeanArenaDB.arenaHistory = nil
-        end
-
-        -- Migrate old BeanArenaCharDB.arenaHistory (v1.4 per-char that wasn't persisted)
-        if BeanArenaCharDB and BeanArenaCharDB.arenaHistory and #BeanArenaCharDB.arenaHistory > 0 then
-            local hist = CharHistory()
-            print(string.format("|cffFFD700[BeanArena]|r Migrating %d games from CharDB for %s.",
-                #BeanArenaCharDB.arenaHistory, currentCharKey))
-            for _,e in ipairs(BeanArenaCharDB.arenaHistory) do
-                table.insert(hist, e)
-            end
-            BeanArenaCharDB.arenaHistory = nil
-        end
-
-        -- Ensure note field and opponent key on all entries
-        for _,entry in ipairs(CharHistory()) do
-            if entry.enemy and not entry.opponent then
-                entry.opponent = entry.enemy; entry.enemy = nil
-            end
-            if entry.note == nil then entry.note = "" end
-        end
-
-    elseif event=="PLAYER_ENTERING_WORLD" then
+        if DB("openOnLogin") then OpenBeanArena() end
+    elseif event == "PLAYER_ENTERING_WORLD" then
         if RequestPVPRewardsUpdate then RequestPVPRewardsUpdate() end
-        local _,iType=IsInInstance()
-        if iType=="arena" then
-            if not inArena then
-                inArena=true; matchStart=GetTime(); matchBracket=nil; pendingOpponents=nil
-            end
-        else
-            inArena=false; pendingOpponents=nil
-        end
         if frame:IsShown() then BeanArena_RefreshFrame() end
-
-    elseif event=="ZONE_CHANGED_NEW_AREA" then
-        local _,iType=IsInInstance()
-        if iType=="arena" then
-            if not inArena then
-                inArena=true; matchStart=GetTime(); matchBracket=nil; pendingOpponents=nil
-            end
-        else
-            inArena=false; pendingOpponents=nil
-        end
-
-    elseif event=="ARENA_OPPONENT_UPDATE" or (event=="UNIT_HEALTH" and arg1 and arg1:find("^arena")) then
-        -- Snapshot opponents while units are still present
-        if inArena then SnapshotOpponents() end
-
-    elseif event=="COMBAT_LOG_EVENT_UNFILTERED" then
-        -- Snapshot the moment any arena unit takes damage or dies,
-        -- before their unit token becomes invalid
-        if not inArena then return end
-        local _, subEvent, _, _, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
-        if subEvent and (subEvent:find("_DAMAGE") or subEvent:find("_DIED") or subEvent == "UNIT_DIED") then
-            SnapshotOpponents()
-        end
-
-    elseif event=="UPDATE_BATTLEFIELD_STATUS" then
+    elseif event == "UPDATE_BATTLEFIELD_STATUS" then
         if frame:IsShown() then BeanArena_RefreshFrame() end
-
-    elseif event=="UPDATE_BATTLEFIELD_SCORE" then
-        if not inArena then return end
-        -- Always snapshot opponents while in arena (catches them before they leave)
-        SnapshotOpponents()
-        if not matchBracket then matchBracket=DetectBracket() end
-        -- Only record the match when there is an actual winner declared.
-        -- GetBattlefieldWinner() returns nil mid-match and 0 or 1 when match ends.
-        local winner = GetBattlefieldWinner and GetBattlefieldWinner()
-        if winner == nil then return end  -- mid-match score update, ignore
-        local numScores = GetNumBattlefieldScores and GetNumBattlefieldScores() or 0
-        -- Find our team index by matching player name in the score table
-        local playerName = UnitName("player") or ""
-        local myTeam = nil
-        for i = 1, numScores do
-            local name,_,_,_,_,_,_,_,_,_,_,_,teamIndex = GetBattlefieldScore(i)
-            if name and name:find(playerName, 1, true) then
-                myTeam = teamIndex
-                break
-            end
-        end
-        -- Determine win: if we found our team index, compare to winner index.
-        -- Team 0 is always "our side" in TBC arena, so fallback to winner==0.
-        local won
-        if myTeam ~= nil then
-            won = (winner == myTeam)
-        else
-            won = (winner == 0)
-        end
-        SaveMatch(won)
-        inArena = false
-        if hFrame:IsShown() then BeanArena_RefreshHistory() end
     end
 end)
 
 -- ============================================================
--- HONOR HOOK (open-with-honor feature only)
+-- HONOR HOOK
 -- ============================================================
 local honorHookDone = false
-
-SetupHonorHook=function()
+SetupHonorHook = function()
     if honorHookDone then return end
-    honorHookDone=true
+    honorHookDone = true
     if PVPFrame then
-        PVPFrame:HookScript("OnShow",function()
-            if DB("openWithHonor") or DB("openBothWithHonor") then OpenBeanArena() end
-            if DB("openBothWithHonor") then OpenHistory() end
+        PVPFrame:HookScript("OnShow", function()
+            if DB("openWithHonor") then OpenBeanArena() end
         end)
     end
 end
--- ============================================================
--- TICKERS
--- ============================================================
--- Re-detect bracket every second for up to 15s after entering arena
--- (opponents may not all be loaded immediately on entry)
-local bTicker = 0
-local bCheckCount = 0
-local bFrame = CreateFrame("Frame")
-bFrame:SetScript("OnUpdate", function(self, elapsed)
-    if not inArena then bCheckCount = 0; return end
-    -- Once bracket is confirmed by seeing enough units, stop checking
-    -- A "confirmed" bracket means we saw the expected number of opponents
-    bTicker = bTicker + elapsed
-    if bTicker >= 1 then
-        bTicker = 0
-        bCheckCount = bCheckCount + 1
-        local detected = DetectBracket()
-        -- Update matchBracket if not yet set, or if new detection sees more units
-        -- (i.e. we saw 2 opponents earlier, now we see 3 = 3v3)
-        if not matchBracket then
-            matchBracket = detected
-        else
-            -- Upgrade bracket if we're seeing more opponents now
-            local order = {["2v2"]=1, ["3v3"]=2, ["5v5"]=3}
-            if (order[detected] or 0) > (order[matchBracket] or 0) then
-                matchBracket = detected
-            end
-        end
-        -- Stop after 15 checks (15 seconds)
-        if bCheckCount >= 15 then
-            bCheckCount = 0
-        end
-    end
-end)
 
-local ticker=0
-frame:SetScript("OnUpdate",function(self,elapsed)
-    ticker=ticker+elapsed
-    if ticker>=5 then
-        ticker=0; RefreshLive(); RefreshMisc()
+-- ============================================================
+-- TICKER
+-- ============================================================
+local ticker = 0
+frame:SetScript("OnUpdate", function(self, elapsed)
+    ticker = ticker + elapsed
+    if ticker >= 5 then
+        ticker = 0
+        RefreshLive(); RefreshMisc()
         if not editFocused["manual2v2"] then man2v2Edit:SetText(tostring(DB("manual2v2"))) end
         if not editFocused["manual3v3"] then man3v3Edit:SetText(tostring(DB("manual3v3"))) end
         if not editFocused["manual5v5"] then man5v5Edit:SetText(tostring(DB("manual5v5"))) end
     end
 end)
+
+-- ============================================================
+-- END OF FILE | BeanArena v2.0.0 | 2025-03-01
+-- ============================================================
