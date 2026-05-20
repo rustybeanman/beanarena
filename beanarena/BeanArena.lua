@@ -1477,9 +1477,9 @@ do
 
         local weaponList = agSeason == 2 and S2_WEAPONS or S1_WEAPONS
         local setNames   = agSeason == 2 and CLASS_SET_S2 or CLASS_SET_S1
-        local filter     = CLASS_WEAPONS[agClass] or {}
         local r2,r3,r5   = GetLiveRatings()
         local bestRating = math.max(r2, r3, r5)
+        local curAP      = GetCurrentArenaPoints()
         local cy = -2
 
         local function AGLine()
@@ -1503,6 +1503,7 @@ do
         end
 
         -- ─── 5-piece armor set ───────────────────────────────────
+        -- (no WoW item IDs for class armor; tooltip shows cost info)
         local setName = setNames[agClass] or (agClass.." Set")
         AGHdr("Armor Set  |cffAAAAAA— "..setName.."|r")
         AGColHdr()
@@ -1514,62 +1515,116 @@ do
             {slot="Shoulders", ap=agSeason==2 and 1245 or 1125, rating=2000},
         }
         for _, row in ipairs(armorSlots) do
-            local rCol = (row.rating==0 or bestRating>=row.rating) and "00FF00" or "FF4444"
+            local rMet = row.rating==0 or bestRating>=row.rating
+            local aMet = curAP >= row.ap
+            local rCol = rMet and "00FF00" or "FF4444"
+            -- Button so OnEnter/OnLeave fire for the custom cost tooltip
+            local rowBtn = CreateFrame("Button", nil, agCnt)
+            rowBtn:SetSize(CW2, 15)
+            rowBtn:SetPoint("TOPLEFT", agCnt, "TOPLEFT", 0, cy)
+            rowBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
             local function FS2(x,t)
-                local f=agCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                f:SetPoint("TOPLEFT",agCnt,"TOPLEFT",x,cy); f:SetText(t)
+                local f=rowBtn:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                f:SetPoint("LEFT",rowBtn,"LEFT",x,0); f:SetText(t)
             end
             FS2(ACOL.slot, "|cffCCCCCC"..row.slot.."|r")
-            FS2(ACOL.ap,   "|cffFFD700"..row.ap.."|r")
+            FS2(ACOL.ap,   (aMet and "|cffFFD700" or "|cffFF6666")..row.ap.."|r")
             FS2(ACOL.rat,  row.rating>0 and ("|cff"..rCol..row.rating.."|r") or "|cff00FF00None|r")
+            local capRow,capSet,capAMet,capRMet = row,setName,aMet,rMet
+            rowBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:AddLine(capSet.." "..capRow.slot, 1, 0.82, 0)
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine(string.format("|cff%s%d Arena Points|r",
+                    capAMet and "FFD700" or "FF6666", capRow.ap))
+                if capRow.rating > 0 then
+                    GameTooltip:AddLine(string.format("|cff%sRequires %d Rating|r",
+                        capRMet and "00FF00" or "FF4444", capRow.rating))
+                else
+                    GameTooltip:AddLine("|cff00FF00No Rating Requirement|r")
+                end
+                GameTooltip:Show()
+            end)
+            rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             cy=cy-15
         end
-        cy=cy-4
+        cy=cy-8
 
-        -- ─── Weapons / off-hands / relics ────────────────────────
-        AGHdr("Weapons & Off-hands  |cffAAAAAA— "..agClass.." (hover for tooltip)|r")
-        AGColHdr()
-        local anyShown = false
+        -- ─── Weapons / Off-hands / Relics  (icon grid, all classes) ────
+        -- All weapons shown regardless of class; grey = can't afford or rating not met.
+        AGHdr("Weapons & Relics  |cffAAAAAA— all classes (hover for details)|r")
+        cy = cy - 4
+
+        local ICON    = 36          -- icon texture size
+        local IGAP    = 4           -- gap between icons
+        local CELL    = ICON + IGAP -- 40 px per cell
+        local PER_ROW = math.floor(CW2 / CELL)
+        local col  = 0
+        local rowY = cy
+
         for _, wep in ipairs(weaponList) do
-            if filter[wep.key] then
-                anyShown = true
-                local rCol = (wep.rating==0 or bestRating>=wep.rating) and "00FF00" or "FF4444"
-                local rowBtn = CreateFrame("Button", nil, agCnt)
-                rowBtn:SetSize(CW2, 15)
-                rowBtn:SetPoint("TOPLEFT", agCnt, "TOPLEFT", 0, cy)
-                rowBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
-                local function BFS(x,t)
-                    local f=rowBtn:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                    f:SetPoint("LEFT",rowBtn,"LEFT",x,0); f:SetText(t)
-                end
-                BFS(ACOL.slot, "|cffCCCCCC"..wep.slot.."|r")
-                BFS(ACOL.ap,   "|cffFFD700"..wep.ap.."|r")
-                BFS(ACOL.rat,  wep.rating>0 and ("|cff"..rCol..wep.rating.."|r") or "|cff00FF00None|r")
-                -- Tooltip on hover
-                local capturedWep = wep
-                rowBtn:SetScript("OnEnter", function(self)
-                    if capturedWep.ids and capturedWep.ids[1] then
-                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                        GameTooltip:SetHyperlink("item:"..capturedWep.ids[1])
-                        if #capturedWep.ids > 1 then
-                            GameTooltip:AddLine(string.format(
-                                "|cffAAAAAA+ %d more style variant%s (same stats)|r",
-                                #capturedWep.ids-1, #capturedWep.ids>2 and "s" or ""))
-                        end
-                        GameTooltip:Show()
+            local cellX     = col * CELL
+            local canAfford = curAP >= wep.ap
+            local ratingMet = wep.rating == 0 or bestRating >= wep.rating
+
+            local iconBtn = CreateFrame("Button", nil, agCnt)
+            iconBtn:SetSize(ICON, ICON)
+            iconBtn:SetPoint("TOPLEFT", agCnt, "TOPLEFT", cellX, rowY)
+
+            -- Icon texture (first id of the entry)
+            local iconTex = iconBtn:CreateTexture(nil, "BACKGROUND")
+            iconTex:SetAllPoints()
+            local firstID = wep.ids and wep.ids[1]
+            if firstID then
+                local _,_,_,_,_,_,_,_,_,iconPath = GetItemInfo(firstID)
+                iconTex:SetTexture(iconPath or "Interface\\Icons\\INV_Misc_QuestionMark")
+            else
+                iconTex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
+            end
+            -- Desaturate items that can't be purchased yet
+            if not (canAfford and ratingMet) then
+                iconTex:SetDesaturated(true)
+                iconTex:SetVertexColor(0.55, 0.55, 0.55)
+            end
+
+            iconBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+
+            -- Full tooltip on hover
+            local capW,capCA,capRM = wep,canAfford,ratingMet
+            iconBtn:SetScript("OnEnter", function(self)
+                local id = capW.ids and capW.ids[1]
+                if id then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetHyperlink("item:"..id)
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine(string.format("|cff%s%d Arena Points|r",
+                        capCA and "FFD700" or "FF6666", capW.ap))
+                    if capW.rating > 0 then
+                        GameTooltip:AddLine(string.format("|cff%sRequires %d Rating|r",
+                            capRM and "00FF00" or "FF4444", capW.rating))
+                    else
+                        GameTooltip:AddLine("|cff00FF00No Rating Requirement|r")
                     end
-                end)
-                rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-                cy=cy-15
+                    if #capW.ids > 1 then
+                        GameTooltip:AddLine(string.format("|cffAAAAAA+ %d style variant%s|r",
+                            #capW.ids-1, #capW.ids>2 and "s" or ""))
+                    end
+                    GameTooltip:Show()
+                end
+            end)
+            iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+            col = col + 1
+            if col >= PER_ROW then
+                col  = 0
+                rowY = rowY - CELL
             end
         end
-        if not anyShown then
-            local nf=agCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-            nf:SetPoint("TOPLEFT",agCnt,"TOPLEFT",0,cy)
-            nf:SetText("|cff666666No weapons defined for "..agClass.."|r")
-            cy=cy-15
-        end
-        agCnt:SetHeight(math.abs(cy)+20)
+        -- Advance past the last (possibly partial) row
+        if col > 0 then rowY = rowY - CELL end
+        cy = rowY
+
+        agCnt:SetHeight(math.abs(cy) + 20)
     end
 
     agClassBtn:SetScript("OnClick", function(self)
@@ -2687,7 +2742,7 @@ eFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eFrame:RegisterEvent("UPDATE_BATTLEFIELD_STATUS")
 
 eFrame:SetScript("OnEvent", function(self, event, arg1)
-    if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
+    if event == "ADDON_LOADED" and type(arg1)=="string" and arg1:lower() == ADDON_NAME:lower() then
         -- Initialize minimap sub-table with defaults
         BeanArenaDB.minimap = BeanArenaDB.minimap or {}
         local mm = BeanArenaDB.minimap
