@@ -1654,6 +1654,12 @@ do
                     PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
         agClass = cm[cf or ""] or "Warrior"
         agClassBtn:SetText(agClass .. "  v")
+        -- Pre-request item data for both seasons so icons are ready immediately
+        for _, wlist in ipairs({S1_WEAPONS, S2_WEAPONS}) do
+            for _, wep in ipairs(wlist) do
+                if wep.ids then for _, id in ipairs(wep.ids) do GetItemInfo(id) end end
+            end
+        end
         BuildArenaContent()
     end)
 
@@ -1715,8 +1721,9 @@ do
     hgScr:SetScrollChild(hgCnt)
 
     local hgClass = "Warrior"
-    local HCW = PW - 52   -- matches hgCnt:SetWidth(PW-52)
-    local HCOL = { name=0, honor=HCW-195, marks=HCW-130, have=HCW-48 }
+    local HCW  = PW - 52   -- matches hgCnt:SetWidth(PW-52)
+    local HICON = 20        -- px reserved for the item icon on each row
+    local HCOL = { name=HICON+2, honor=HCW-195, marks=HCW-130, have=HCW-48 }
 
     local function BuildHonorContent()
         for _, ch in ipairs({hgCnt:GetChildren()}) do ch:Hide() end
@@ -1767,15 +1774,26 @@ do
             if #mparts == 0 then mparts[#mparts+1] = "|cff00FF00—|r" end
 
             local rowBtn = CreateFrame("Button", nil, hgCnt)
-            rowBtn:SetSize(HCW, 15)
+            rowBtn:SetSize(HCW, HICON)
             rowBtn:SetPoint("TOPLEFT", hgCnt, "TOPLEFT", 0, cy)
             rowBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+
+            -- Item icon (left side of the row)
+            local iconTex = rowBtn:CreateTexture(nil, "BACKGROUND")
+            iconTex:SetSize(HICON, HICON)
+            iconTex:SetPoint("LEFT", rowBtn, "LEFT", 0, 0)
+            local _,_,_,_,_,_,_,_,_,iconPath = GetItemInfo(item.id)
+            iconTex:SetTexture(iconPath or "Interface\\Icons\\INV_Misc_QuestionMark")
+            if not (honorMet and allMet) then
+                iconTex:SetDesaturated(true)
+                iconTex:SetVertexColor(0.55, 0.55, 0.55)
+            end
 
             local function BFS(x, t)
                 local f = rowBtn:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
                 f:SetPoint("LEFT",rowBtn,"LEFT",x,0); f:SetText(t)
             end
-            -- Item name (truncated to fit)
+            -- Item name
             local dispName = item.name or ("item:"..item.id)
             local cached = GetItemInfo(item.id)
             if cached then dispName = cached end
@@ -1792,7 +1810,7 @@ do
                 GameTooltip:Show()
             end)
             rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            cy = cy - 15
+            cy = cy - (HICON + 2)
         end
 
         -- ─── Neck & Ring (universal) ─────────────────────────────
@@ -1864,6 +1882,19 @@ do
                     PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
         hgClass = cm[cf or ""] or "Warrior"
         hgClassBtn:SetText(hgClass .. "  v")
+        -- Pre-request item data so icons are ready immediately
+        for _, list in ipairs({S1_HONOR_UNIVERSAL, S2_HONOR_UNIVERSAL}) do
+            for _, slot in ipairs(list) do
+                for _, item in ipairs(slot.items) do GetItemInfo(item.id) end
+            end
+        end
+        for _, byArmor in ipairs({S1_HONOR_BYARMOR, S2_HONOR_BYARMOR}) do
+            for _, armorList in pairs(byArmor) do
+                for _, slot in ipairs(armorList) do
+                    for _, item in ipairs(slot.items) do GetItemInfo(item.id) end
+                end
+            end
+        end
         BuildHonorContent()
     end)
 
@@ -2735,11 +2766,16 @@ end
 -- ============================================================
 -- EVENTS
 -- ============================================================
+-- Set when GET_ITEM_INFO_RECEIVED fires while a gear popup is open;
+-- cleared by the OnUpdate ticker which then rebuilds the popup once.
+local itemRefreshPending = false
+
 local eFrame = CreateFrame("Frame")
 eFrame:RegisterEvent("ADDON_LOADED")
 eFrame:RegisterEvent("PLAYER_LOGIN")
 eFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eFrame:RegisterEvent("UPDATE_BATTLEFIELD_STATUS")
+eFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 
 eFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and type(arg1)=="string" and arg1:lower() == ADDON_NAME:lower() then
@@ -2782,6 +2818,13 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
         end
     elseif event == "UPDATE_BATTLEFIELD_STATUS" then
         if frame:IsShown() then BeanArena_RefreshFrame() end
+    elseif event == "GET_ITEM_INFO_RECEIVED" then
+        -- Flag a rebuild so icons that loaded after the popup opened get shown.
+        -- The OnUpdate ticker consumes the flag and does a single rebuild.
+        if (arenaGearFrame and arenaGearFrame:IsShown()) or
+           (honorGearFrame and honorGearFrame:IsShown()) then
+            itemRefreshPending = true
+        end
     end
 end)
 
@@ -2813,6 +2856,12 @@ end
 -- ============================================================
 local ticker = 0
 frame:SetScript("OnUpdate", function(self, elapsed)
+    -- Rebuild gear popups once after item icons finish loading
+    if itemRefreshPending then
+        itemRefreshPending = false
+        if arenaGearFrame:IsShown() then BeanArena_RefreshArenaGearPopup() end
+        if honorGearFrame:IsShown()  then BeanArena_RefreshHonorGearPopup()  end
+    end
     ticker = ticker + elapsed
     if ticker >= 5 then
         ticker = 0
