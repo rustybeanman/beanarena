@@ -84,14 +84,16 @@ local function CharDB(key)
 end
 local function SetCharDB(key, val) BeanArenaCharDB[key] = val end
 
+-- Forward-declared so SnapshotCharData/WriteAltSnapshot (defined before the
+-- body below) capture it as an upvalue rather than a nil global lookup.
+local GetLiveRatings
 
 -- Snapshot current char data into the cross-char roster
 local function SnapshotCharData()
     if not CHAR_NAME or not CHAR_REALM then return end
     BeanArenaDB.chars = BeanArenaDB.chars or {}
     local key = CHAR_NAME .. "-" .. CHAR_REALM
-    local r2,r3,r5,g2,g3,g5 = 0,0,0,0,0,0
-    if GetLiveRatings then r2,r3,r5,g2,g3,g5 = GetLiveRatings() end
+    local r2,r3,r5,g2,g3,g5 = GetLiveRatings()
     local snap = {
         name         = CHAR_NAME,
         realm        = CHAR_REALM,
@@ -306,7 +308,7 @@ end
 -- ============================================================
 -- LIVE RATINGS
 -- ============================================================
-local function GetLiveRatings()
+GetLiveRatings = function()
     local r2,r3,r5,g2,g3,g5 = 0,0,0,0,0,0
     if GetPersonalRatedInfo then
         -- GetPersonalRatedInfo: rating, seasonBest, weeklyBest, seasonPlayed, seasonWon, weeklyPlayed, weeklyWon, cap
