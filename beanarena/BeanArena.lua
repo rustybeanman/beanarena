@@ -762,14 +762,14 @@ MakeHeader(frame, Y.THEAD, "Rating Target", LC)
 MakeLine(frame, Y.TLINE2, CW, LC)
 
 SmallHdr(CALC.lbl,  Y.TINPUT + 10, "AP Goal")
-SmallHdr(CALC.res,  Y.TINPUT + 10, "Rating Needed per Bracket")
 
 local targetLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 targetLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.lbl, Y.TINPUT)
 targetLbl:SetText("Target AP:"); targetLbl:SetTextColor(0.8, 0.8, 0.8)
 
 local targetResultFS = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-targetResultFS:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.res, Y.TINPUT)
+targetResultFS:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y.TRES)
+targetResultFS:SetWidth(CW)
 targetResultFS:SetText("--")
 
 local targetAPEdit = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
@@ -806,7 +806,7 @@ RefreshTargetCalc = function()
     for _, bkt in ipairs({"2v2", "3v3", "5v5"}) do
         local r = CalcRatingForPoints(ap, bkt)
         if r == nil then
-            parts[#parts+1] = string.format("%s: |cffFF4444unreachable|r|cff666666(max ~%d)|r", bkt, BRACKET_MAX_AP[bkt])
+            parts[#parts+1] = string.format("%s: |cffFF4444n/a|r|cff666666(~%d max)|r", bkt, BRACKET_MAX_AP[bkt])
         elseif r == 0 then
             parts[#parts+1] = bkt .. ": |cff00FF00any|r"
         else
