@@ -85,8 +85,8 @@ end
 local function SetCharDB(key, val) BeanArenaCharDB[key] = val end
 
 -- Forward-declared so SnapshotCharData/WriteAltSnapshot (defined before the
--- body below) capture it as an upvalue rather than a nil global lookup.
-local GetLiveRatings
+-- bodies below) capture them as upvalues rather than nil global lookups.
+local GetLiveRatings, GetCurrentArenaPoints, GetCurrentHonor
 
 -- Snapshot current char data into the cross-char roster
 local function SnapshotCharData()
@@ -97,8 +97,8 @@ local function SnapshotCharData()
     local snap = {
         name         = CHAR_NAME,
         realm        = CHAR_REALM,
-        arenaPoints  = GetCurrentArenaPoints and GetCurrentArenaPoints() or 0,
-        honor        = GetCurrentHonor and GetCurrentHonor() or 0,
+        arenaPoints  = GetCurrentArenaPoints(),
+        honor        = GetCurrentHonor(),
         r2=r2, r3=r3, r5=r5, g2=g2, g3=g3, g5=g5,
         timestamp    = time(),
     }
@@ -232,7 +232,7 @@ end
 -- ============================================================
 local HONOR_CAP = 75000
 
-local function GetCurrentHonor()
+GetCurrentHonor = function()
     if GetHonorCurrency then
         local h = GetHonorCurrency(); if h then return h end
     end
@@ -246,7 +246,7 @@ local function GetCurrentHonor()
     return 0
 end
 
-local function GetCurrentArenaPoints()
+GetCurrentArenaPoints = function()
     if GetArenaPoints then
         local pts = GetArenaPoints(); if pts then return pts end
     end
