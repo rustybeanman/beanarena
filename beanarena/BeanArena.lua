@@ -40,7 +40,9 @@
 --         |             Minimap: standardized frame, BA text icon, addon-compatible
 --         |             Notes: robust persistence (nf.initialized), char-aware reload
 -- v0.3.1 | 2026-03-28 | Remove notes buttons, fix ApplyCharView nil crash, fix minimap border
--- CURRENT: v0.3.1
+-- v0.3.2 | 2026-05-19 | S2 honor gear table (Veteran's only: Neck/Ring/Bracers/Belt/Boots)
+--         |             Rating Target calculator (enter AP goal, shows needed rating per bracket)
+-- CURRENT: v0.3.2
 -- ============================================================
 
 -- ============================================================
@@ -62,6 +64,7 @@ local defaults = {
     manual2v2    = 0,
     manual3v3    = 0,
     manual5v5    = 0,
+    targetAP     = 0,
     frameX       = nil,
     frameY       = nil,
     openOnLogin  = false,
@@ -162,6 +165,21 @@ local function CalcBestPoints(r2, r3, r5)
     return best, bestBracket
 end
 
+-- Inverse of CalcBracketPoints: given a target AP and bracket, returns the rating needed.
+-- Returns nil if the AP is above the bracket's theoretical maximum (~2478 for 5v5).
+-- Returns 0 if the AP is so low any rating achieves it.
+local function CalcRatingForPoints(targetAP, bracket)
+    local mult = (bracket == "2v2") and 0.76 or (bracket == "3v3") and 0.88 or 1.0
+    local base = targetAP / mult
+    local inner = base / 1.5 - 475
+    if inner <= 0 then return 0 end
+    if inner >= 1176.94 then return nil end
+    local x = 1176.94 / inner - 1
+    if x <= 0 then return nil end
+    local rating = -math.log(x / 2500000) / 0.009
+    return math.max(0, math.ceil(rating))
+end
+
 -- ============================================================
 -- GEAR DATA TABLES
 -- ============================================================
@@ -182,18 +200,16 @@ local ARENA_GEAR_FULL = {
     { slot="Caster Staff",     ap=3110, rating=1700 },
 }
 
+-- Season 2 (Veteran's) honor off-pieces only.
+-- Main armor slots (helm/chest/legs/shoulders/gloves) come from the Merciless Gladiator arena set.
+-- Item IDs from AtlasLoot S2 data: Neck=33066, Ring=33057, Bracers/Belt/Boots per armor type (32xxx).
+-- Prices need in-game vendor verification — kept from S1 as placeholder until confirmed.
 local HONOR_GEAR_FULL = {
-    { slot="Neck",      honor=12695, marks={ EotS=5  } },
-    { slot="Ring",      honor=12695, marks={ AV=5    } },
-    { slot="Cloak",     honor=9785,  marks={ AB=10   } },
-    { slot="Bracers",   honor=9785,  marks={ WSG=10  } },
-    { slot="Belt",      honor=14815, marks={ AB=10   } },
-    { slot="Boots",     honor=14815, marks={ EotS=20 } },
-    { slot="Gloves",    honor=10475, marks={ AV=10   } },
-    { slot="Shoulders", honor=10475, marks={ AB=10   } },
-    { slot="Helmet",    honor=16665, marks={ AV=15   } },
-    { slot="Legs",      honor=16665, marks={ WSG=15  } },
-    { slot="Chest",     honor=17140, marks={ AB=15   } },
+    { slot="Neck",    honor=12695, marks={ EotS=5  } },
+    { slot="Ring",    honor=12695, marks={ AV=5    } },
+    { slot="Bracers", honor=9785,  marks={ WSG=10  } },
+    { slot="Belt",    honor=14815, marks={ AB=10   } },
+    { slot="Boots",   honor=14815, marks={ EotS=20 } },
 }
 
 -- ============================================================
@@ -592,7 +608,7 @@ end)
 -- ============================================================
 -- LAYOUT CONSTANTS  (condensed single-column main frame)
 -- ============================================================
-local FW, FH = 430, 430   -- expanded spacing + 3 button rows
+local FW, FH = 430, 510   -- expanded for Rating Target section
 local LC = 18
 local CW = FW - 36
 
@@ -607,8 +623,11 @@ local Y = {
     MHEAD   = -200, MLINE1  = -215, MCALCHDR= -227,
     MLINE1B = -240, M2V2    = -254, M3V3    = -274,
     M5V5    = -294, MLINE2  = -312,
-    -- Bottom button rows
-    BTNS    = -330, BTNROW2 = -355, CHARDD  = -380,
+    -- Rating Target (AP → Rating)
+    TLINE   = -318, THEAD   = -330, TLINE2  = -343,
+    TINPUT  = -358, TRES    = -378, TLINE3  = -395,
+    -- Bottom button rows (shifted down from original -330/-355/-380)
+    BTNS    = -410, BTNROW2 = -430, CHARDD  = -453,
 }
 
 -- ============================================================
@@ -634,7 +653,7 @@ titleFS:SetJustifyH("RIGHT")
 
 local versionFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 versionFS:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -36, -27)
-versionFS:SetText("|cff666666v0.3.1  •  TBC Anniversary|r")
+versionFS:SetText("|cff666666v0.3.2  •  TBC Anniversary|r")
 versionFS:SetJustifyH("RIGHT")
 
 local mainClose = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
@@ -734,6 +753,68 @@ local man3v3Edit = MakeCalcRow(Y.M3V3, "3v3:", "manual3v3", "3v3")
 local man5v5Edit = MakeCalcRow(Y.M5V5, "5v5:", "manual5v5", "5v5")
 
 MakeLine(frame, Y.MLINE2, CW, LC)
+
+-- ══════════════════════════════════════════════════════════════
+-- SECTION: RATING TARGET  (AP → Rating inverse calculator)
+-- ══════════════════════════════════════════════════════════════
+MakeLine(frame, Y.TLINE, CW, LC)
+MakeHeader(frame, Y.THEAD, "Rating Target", LC)
+MakeLine(frame, Y.TLINE2, CW, LC)
+
+SmallHdr(CALC.lbl,  Y.TINPUT - 10, "AP Goal")
+SmallHdr(CALC.res,  Y.TINPUT - 10, "Rating Needed per Bracket")
+
+local targetLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+targetLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.lbl, Y.TINPUT)
+targetLbl:SetText("Target AP:"); targetLbl:SetTextColor(0.8, 0.8, 0.8)
+
+local targetResultFS = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+targetResultFS:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.res, Y.TINPUT)
+targetResultFS:SetText("--")
+
+local targetAPEdit = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+targetAPEdit:SetSize(88, 20)
+targetAPEdit:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.eb, Y.TINPUT + 4)
+targetAPEdit:SetAutoFocus(false); targetAPEdit:SetNumeric(true); targetAPEdit:SetMaxLetters(4)
+targetAPEdit:SetText(DB("targetAP") > 0 and tostring(DB("targetAP")) or "")
+
+local RefreshTargetCalc
+targetAPEdit:SetScript("OnEditFocusGained", function() editFocused["targetAP"] = true end)
+targetAPEdit:SetScript("OnEditFocusLost", function(self)
+    editFocused["targetAP"] = nil
+    SetDB("targetAP", tonumber(self:GetText()) or 0)
+    RefreshTargetCalc()
+end)
+targetAPEdit:SetScript("OnEnterPressed", function(self)
+    SetDB("targetAP", tonumber(self:GetText()) or 0)
+    self:ClearFocus(); RefreshTargetCalc()
+end)
+targetAPEdit:SetScript("OnEscapePressed", function(self)
+    local v = DB("targetAP")
+    self:SetText(v > 0 and tostring(v) or ""); self:ClearFocus()
+end)
+
+RefreshTargetCalc = function()
+    local ap = DB("targetAP")
+    if ap <= 0 then
+        targetResultFS:SetText("|cff666666—|r")
+        return
+    end
+    local parts = {}
+    for _, bkt in ipairs({"2v2", "3v3", "5v5"}) do
+        local r = CalcRatingForPoints(ap, bkt)
+        if r == nil then
+            parts[#parts+1] = bkt .. ": |cffFF4444>max|r"
+        elseif r == 0 then
+            parts[#parts+1] = bkt .. ": |cff00FF00any|r"
+        else
+            parts[#parts+1] = bkt .. ": |cffFFD700" .. tostring(r) .. "|r"
+        end
+    end
+    targetResultFS:SetText(table.concat(parts, "  |cff444444·|r  "))
+end
+
+MakeLine(frame, Y.TLINE3, CW, LC)
 
 -- ── Row 1: Arena Gear | Honor Gear ─────────────────────────
 local BTNW = math.floor((CW - 4) / 2)
@@ -1081,7 +1162,7 @@ do
 
     local sub = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sub:SetPoint("TOP", arenaGearFrame, "TOP", 0, -30)
-    sub:SetText("|cffAAAAAASeason 1  —  Arena Points required|r")
+    sub:SetText("|cffAAAAAAAASeason 2 (Merciless Gladiator)  —  Arena Points required|r")
     MakeLine(arenaGearFrame, -42, INNER_W, 16)
 
     local function AGHdr(x, y, txt)
@@ -1158,7 +1239,7 @@ do
 
     local sub = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sub:SetPoint("TOP", honorGearFrame, "TOP", 0, -30)
-    sub:SetText("|cffAAAAAASeason 1  —  Honor + BG Marks required|r")
+    sub:SetText("|cffAAAAAAAASeason 2 (Veteran's off-pieces)  —  Honor + BG Marks required|r")
     MakeLine(honorGearFrame, -42, INNER_W, 16)
 
     local function HGHdr(x, y, txt)
@@ -1234,6 +1315,7 @@ end
 local COMMANDS_LIST = {
     { cmd="/ba",                desc="Toggle main window"              },
     { cmd="/ba calc [rating]",  desc="AP for live ratings or a number" },
+    { cmd="/ba target <ap>",   desc="Rating needed to earn that AP"   },
     { cmd="/ba honor [slot]",   desc="Honor window or gear slot info"  },
     { cmd="/ba arena [slot]",   desc="Arena gear window or slot info"  },
     { cmd="/ba dr [class]",     desc="CC/DR window or class CC list"   },
@@ -1310,7 +1392,7 @@ do
 
     local iTitle = infoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     iTitle:SetPoint("TOP", infoFrame, "TOP", 0, -12)
-    iTitle:SetText("|cffFFD700BeanArena|r  |cff888888v0.3.0|r")
+    iTitle:SetText("|cffFFD700BeanArena|r  |cff888888v0.3.2|r")
 
     MakeLine(infoFrame, -30, IW - 32, 14)
 
@@ -1511,7 +1593,7 @@ BeanArena_RefreshManual = function()
     manResultFS["2v2"]:SetText(FmtPts(m2, "2v2"))
     manResultFS["3v3"]:SetText(FmtPts(m3, "3v3"))
     manResultFS["5v5"]:SetText(FmtPts(m5, "5v5"))
-
+    RefreshTargetCalc()
 end
 
 local function RefreshLive()
@@ -1557,6 +1639,9 @@ BeanArena_RefreshFrame = function()
     if not editFocused["manual2v2"] then man2v2Edit:SetText(tostring(DB("manual2v2"))) end
     if not editFocused["manual3v3"] then man3v3Edit:SetText(tostring(DB("manual3v3"))) end
     if not editFocused["manual5v5"] then man5v5Edit:SetText(tostring(DB("manual5v5"))) end
+    if not editFocused["targetAP"] then
+        local v = DB("targetAP"); targetAPEdit:SetText(v > 0 and tostring(v) or "")
+    end
     BeanArena_RefreshManual()
 end
 
@@ -1823,7 +1908,7 @@ SlashCmdList["BEANARENA"] = function(msg)
             end
             if not found then
                 print(BA .. " No honor gear found for: |cffFF4444" .. args .. "|r")
-                print("  Slots: Neck, Ring, Cloak, Bracers, Belt, Boots, Gloves, Shoulders, Helmet, Legs, Chest")
+                print("  Slots: Neck, Ring, Bracers, Belt, Boots")
             end
         end
 
@@ -1861,6 +1946,25 @@ SlashCmdList["BEANARENA"] = function(msg)
             if not found then
                 print(BA .. " No arena gear found for: |cffFF4444" .. args .. "|r")
                 print("  Slots: Gloves, Helmet, Legs, Chest, Shoulders, Shield, Main-hand, etc.")
+            end
+        end
+
+    -- ── /ba target <ap> ───────────────────────────────────────
+    elseif cmd == "target" then
+        local ap = tonumber(args)
+        if not ap or ap <= 0 then
+            print(BA .. " Usage: /ba target <arena points>  e.g. /ba target 1500")
+        else
+            print(string.format("%s Rating needed to earn |cffFFD700%d AP|r per week:", BA, ap))
+            for _, bkt in ipairs({"2v2", "3v3", "5v5"}) do
+                local r = CalcRatingForPoints(ap, bkt)
+                if r == nil then
+                    print(string.format("  %s: |cffFF4444Above maximum|r", bkt))
+                elseif r == 0 then
+                    print(string.format("  %s: |cff00FF00Any rating|r", bkt))
+                else
+                    print(string.format("  %s: |cffFFD700%d|r", bkt, r))
+                end
             end
         end
 
@@ -2048,7 +2152,7 @@ SlashCmdList["BEANARENA"] = function(msg)
     elseif cmd == "help" then
         print("|cffFFD700[BA]|r Commands — /ba {command}")
         print("  |cffFFD700Windows:|r  /ba  honor  gear  hgear  cc  info  chars")
-        print("  |cffFFD700Lookup:|r   calc [#]  honor [slot]  arena [slot]  dr [class]")
+        print("  |cffFFD700Lookup:|r   calc [#]  target <ap>  honor [slot]  arena [slot]  dr [class]")
         print("  |cffFFD700Lists:|r    slots  slots arena  slots honor")
         print("  |cffFFD700Other:|r    alts  points  marks  reset  help")
 
@@ -2087,7 +2191,7 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
         end
         UpdateMinimapPos()
         SetupPVPHook()
-        print("|cffFFD700[BeanArena]|r v0.3.1 loaded! /ba help")
+        print("|cffFFD700[BeanArena]|r v0.3.2 loaded! /ba help")
         if DB("openOnLogin") then OpenBeanArena() end
     elseif event == "PLAYER_LOGIN" then
         CHAR_NAME  = UnitName("player") or "Unknown"
