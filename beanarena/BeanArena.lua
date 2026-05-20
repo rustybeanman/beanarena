@@ -761,8 +761,8 @@ MakeLine(frame, Y.TLINE, CW, LC)
 MakeHeader(frame, Y.THEAD, "Rating Target", LC)
 MakeLine(frame, Y.TLINE2, CW, LC)
 
-SmallHdr(CALC.lbl,  Y.TINPUT - 10, "AP Goal")
-SmallHdr(CALC.res,  Y.TINPUT - 10, "Rating Needed per Bracket")
+SmallHdr(CALC.lbl,  Y.TINPUT + 10, "AP Goal")
+SmallHdr(CALC.res,  Y.TINPUT + 10, "Rating Needed per Bracket")
 
 local targetLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 targetLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.lbl, Y.TINPUT)
@@ -794,6 +794,8 @@ targetAPEdit:SetScript("OnEscapePressed", function(self)
     self:SetText(v > 0 and tostring(v) or ""); self:ClearFocus()
 end)
 
+local BRACKET_MAX_AP = { ["2v2"] = 1883, ["3v3"] = 2181, ["5v5"] = 2478 }
+
 RefreshTargetCalc = function()
     local ap = DB("targetAP")
     if ap <= 0 then
@@ -804,7 +806,7 @@ RefreshTargetCalc = function()
     for _, bkt in ipairs({"2v2", "3v3", "5v5"}) do
         local r = CalcRatingForPoints(ap, bkt)
         if r == nil then
-            parts[#parts+1] = bkt .. ": |cffFF4444>max|r"
+            parts[#parts+1] = string.format("%s: |cffFF4444unreachable|r|cff666666(max ~%d)|r", bkt, BRACKET_MAX_AP[bkt])
         elseif r == 0 then
             parts[#parts+1] = bkt .. ": |cff00FF00any|r"
         else
@@ -1959,7 +1961,7 @@ SlashCmdList["BEANARENA"] = function(msg)
             for _, bkt in ipairs({"2v2", "3v3", "5v5"}) do
                 local r = CalcRatingForPoints(ap, bkt)
                 if r == nil then
-                    print(string.format("  %s: |cffFF4444Above maximum|r", bkt))
+                    print(string.format("  %s: |cffFF4444Unreachable|r  |cffAAAAAA(bracket max ~%d AP)|r", bkt, BRACKET_MAX_AP[bkt]))
                 elseif r == 0 then
                     print(string.format("  %s: |cff00FF00Any rating|r", bkt))
                 else
