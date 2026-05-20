@@ -1447,13 +1447,16 @@ do
     agS2Btn:SetSize(70, 22); agS2Btn:SetPoint("LEFT", agS1Btn, "RIGHT", 4, 0)
     agS2Btn:SetText("Season 2"); agS2Btn:GetFontString():SetFontObject("GameFontNormalSmall")
 
-    -- Class dropdown
+    -- Class selector: visible button + hidden menu anchor
     local agClassLbl = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    agClassLbl:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 162, -37)
+    agClassLbl:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 156, -37)
     agClassLbl:SetText("|cffAAAAAA Class:|r")
-    local agClassDD = CreateFrame("Frame", "BeanArenaAgClassDD", arenaGearFrame, "UIDropDownMenuTemplate")
-    UIDropDownMenu_SetWidth(agClassDD, 120)
-    agClassDD:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 193, -44)
+    local agClassBtn = CreateFrame("Button", nil, arenaGearFrame, "UIPanelButtonTemplate")
+    agClassBtn:SetSize(148, 22)
+    agClassBtn:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 196, -33)
+    agClassBtn:GetFontString():SetFontObject("GameFontNormalSmall")
+    -- hidden anchor for the MENU dropdown (parented to UIParent to avoid clipping)
+    local agClassDD = CreateFrame("Frame", "BeanArenaAgClassDD", UIParent, "UIDropDownMenuTemplate")
 
     -- Scroll area
     local agScr = CreateFrame("ScrollFrame", "BeanArenaAgScr", arenaGearFrame, "UIPanelScrollFrameTemplate")
@@ -1569,42 +1572,33 @@ do
         agCnt:SetHeight(math.abs(cy)+20)
     end
 
-    -- Class dropdown init
-    local function AgClassInit()
+    agClassBtn:SetScript("OnClick", function(self)
         UIDropDownMenu_Initialize(agClassDD, function()
             for _, cls in ipairs(CLASS_LIST) do
                 local info = UIDropDownMenu_CreateInfo()
                 info.text = cls; info.value = cls
-                info.notCheckable = false
-                info.checked = (agClass == cls)
+                info.notCheckable = true
                 info.func = function()
                     agClass = cls
-                    UIDropDownMenu_SetText(agClassDD, cls)
+                    agClassBtn:SetText(cls .. "  v")
                     BuildArenaContent()
                     CloseDropDownMenus()
                 end
                 UIDropDownMenu_AddButton(info)
             end
         end, "MENU")
-    end
+        ToggleDropDownMenu(1, nil, agClassDD, self, 0, -4)
+    end)
 
-    agS1Btn:SetScript("OnClick", function()
-        agSeason = 1; UIDropDownMenu_SetText(agClassDD, agClass)
-        BuildArenaContent()
-    end)
-    agS2Btn:SetScript("OnClick", function()
-        agSeason = 2; UIDropDownMenu_SetText(agClassDD, agClass)
-        BuildArenaContent()
-    end)
+    agS1Btn:SetScript("OnClick", function() agSeason = 1; BuildArenaContent() end)
+    agS2Btn:SetScript("OnClick", function() agSeason = 2; BuildArenaContent() end)
 
     arenaGearFrame:SetScript("OnShow", function()
-        -- Default class to player's own class
         local _, cf = UnitClass("player")
         local cm = {WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
                     PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
         agClass = cm[cf or ""] or "Warrior"
-        AgClassInit()
-        UIDropDownMenu_SetText(agClassDD, agClass)
+        agClassBtn:SetText(agClass .. "  v")
         BuildArenaContent()
     end)
 
@@ -1645,13 +1639,16 @@ do
     hgS2Btn:SetSize(70, 22); hgS2Btn:SetPoint("LEFT", hgS1Btn, "RIGHT", 4, 0)
     hgS2Btn:SetText("Season 2"); hgS2Btn:GetFontString():SetFontObject("GameFontNormalSmall")
 
-    -- Class dropdown
+    -- Class dropdown  (UIPanelButtonTemplate button + hidden menu anchor)
     local hgClassLbl = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     hgClassLbl:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", 162, -37)
     hgClassLbl:SetText("|cffAAAAAA Class:|r")
-    local hgClassDD = CreateFrame("Frame", "BeanArenaHgClassDD", honorGearFrame, "UIDropDownMenuTemplate")
-    UIDropDownMenu_SetWidth(hgClassDD, 120)
-    hgClassDD:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", 193, -44)
+    local hgClassBtn = CreateFrame("Button", nil, honorGearFrame, "UIPanelButtonTemplate")
+    hgClassBtn:SetSize(148, 22)
+    hgClassBtn:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", 207, -33)
+    -- Hidden anchor for the dropdown menu — parented to UIParent so it renders above everything
+    local hgClassDD = CreateFrame("Frame", "BeanArenaHgClassDD", UIParent, "UIDropDownMenuTemplate")
+    hgClassDD:Hide()
 
     -- Scroll area
     local hgScr = CreateFrame("ScrollFrame", "BeanArenaHgScr", honorGearFrame, "UIPanelScrollFrameTemplate")
@@ -1779,8 +1776,8 @@ do
         hgCnt:SetHeight(math.abs(cy)+20)
     end
 
-    -- Class dropdown init
-    local function HgClassInit()
+    -- Class button click: open dropdown anchored to the button
+    hgClassBtn:SetScript("OnClick", function(self)
         UIDropDownMenu_Initialize(hgClassDD, function()
             for _, cls in ipairs(CLASS_LIST) do
                 local info = UIDropDownMenu_CreateInfo()
@@ -1789,14 +1786,15 @@ do
                 info.checked = (hgClass == cls)
                 info.func = function()
                     hgClass = cls
-                    UIDropDownMenu_SetText(hgClassDD, cls)
+                    hgClassBtn:SetText(cls .. "  v")
                     BuildHonorContent()
                     CloseDropDownMenus()
                 end
                 UIDropDownMenu_AddButton(info)
             end
         end, "MENU")
-    end
+        ToggleDropDownMenu(1, nil, hgClassDD, self, 0, -4)
+    end)
 
     hgS1Btn:SetScript("OnClick", function()
         hgSeason = 1; BuildHonorContent()
@@ -1810,8 +1808,7 @@ do
         local cm = {WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
                     PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
         hgClass = cm[cf or ""] or "Warrior"
-        HgClassInit()
-        UIDropDownMenu_SetText(hgClassDD, hgClass)
+        hgClassBtn:SetText(hgClass .. "  v")
         BuildHonorContent()
     end)
 
@@ -2154,7 +2151,7 @@ local function RefreshMisc()
 end
 
 BeanArena_RefreshFrame = function()
-    RefreshLive(); RefreshMisc()
+    if viewingSnap == nil then RefreshLive() end; RefreshMisc()
     if not editFocused["manual2v2"] then man2v2Edit:SetText(tostring(DB("manual2v2"))) end
     if not editFocused["manual3v3"] then man3v3Edit:SetText(tostring(DB("manual3v3"))) end
     if not editFocused["manual5v5"] then man5v5Edit:SetText(tostring(DB("manual5v5"))) end
@@ -2764,7 +2761,7 @@ frame:SetScript("OnUpdate", function(self, elapsed)
     ticker = ticker + elapsed
     if ticker >= 5 then
         ticker = 0
-        RefreshLive(); RefreshMisc()
+        if viewingSnap == nil then RefreshLive() end; RefreshMisc()
         if not editFocused["manual2v2"] then man2v2Edit:SetText(tostring(DB("manual2v2"))) end
         if not editFocused["manual3v3"] then man3v3Edit:SetText(tostring(DB("manual3v3"))) end
         if not editFocused["manual5v5"] then man5v5Edit:SetText(tostring(DB("manual5v5"))) end
