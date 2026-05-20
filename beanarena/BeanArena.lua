@@ -42,7 +42,10 @@
 -- v0.3.1 | 2026-03-28 | Remove notes buttons, fix ApplyCharView nil crash, fix minimap border
 -- v0.3.2 | 2026-05-19 | S2 honor gear table (Veteran's only: Neck/Ring/Bracers/Belt/Boots)
 --         |             Rating Target calculator (enter AP goal, shows needed rating per bracket)
--- CURRENT: v0.3.2
+-- v0.3.3 | 2026-05-20 | Arena Gear & Honor Gear popups: class dropdown + season toggle (S1/S2)
+--         |             Per-class weapon/relic filtering; Veteran's & General's off-pieces by armor type
+--         |             Item tooltip on hover for all weapons, off-hands, relics, and honor pieces
+-- CURRENT: v0.3.3
 -- ============================================================
 
 -- ============================================================
@@ -212,6 +215,294 @@ local HONOR_GEAR_FULL = {
     { slot="Bracers", honor=9785,  marks={ WSG=10  } },
     { slot="Belt",    honor=14815, marks={ AB=10   } },
     { slot="Boots",   honor=14815, marks={ EotS=20 } },
+}
+
+-- ============================================================
+-- PVP GEAR ITEM DATABASE  (item IDs confirmed from AtlasLoot TBC data)
+-- ============================================================
+
+-- Class → armor type (for honor off-piece filtering)
+local CLASS_ARMOR_TYPE = {
+    Druid="Leather", Hunter="Mail",   Mage="Cloth",
+    Paladin="Plate", Priest="Cloth",  Rogue="Leather",
+    Shaman="Mail",   Warlock="Cloth", Warrior="Plate",
+}
+local CLASS_LIST = {"Druid","Hunter","Mage","Paladin","Priest","Rogue","Shaman","Warlock","Warrior"}
+
+-- Arena set name prefix per class (no individual item IDs — verify in-game before adding)
+local CLASS_SET_S1 = {
+    Warrior="Gladiator's Plate",         Paladin="Gladiator's Redemption",
+    Druid="Gladiator's Kodohide/Dragonhide", Hunter="Gladiator's Chain",
+    Mage="Gladiator's Silk",             Priest="Gladiator's Mooncloth/Satin",
+    Rogue="Gladiator's Leather",         Shaman="Gladiator's Mail/Linked",
+    Warlock="Gladiator's Dreadweave",
+}
+local CLASS_SET_S2 = {
+    Warrior="Merciless Gladiator's Plate",   Paladin="Merciless Gladiator's Redemption",
+    Druid="Merciless Gladiator's Kodohide/Dragonhide", Hunter="Merciless Gladiator's Chain",
+    Mage="Merciless Gladiator's Silk",       Priest="Merciless Gladiator's Mooncloth/Satin",
+    Rogue="Merciless Gladiator's Leather",   Shaman="Merciless Gladiator's Mail/Linked",
+    Warlock="Merciless Gladiator's Dreadweave/Felweave",
+}
+
+-- Weapon slot keys each class can equip (used to filter arena weapon list)
+local CLASS_WEAPONS = {
+    Warrior = {["1H-Sword"]=1,["1H-Axe"]=1,["1H-Mace"]=1,["1H-Fist"]=1,
+               ["2H-Sword"]=1,["2H-Axe"]=1,["2H-Mace"]=1,
+               ["Shield"]=1,["Thrown"]=1},
+    Paladin = {["1H-Mace"]=1,["1H-Sword"]=1,["1H-Axe"]=1,["1H-MaceHeal"]=1,
+               ["2H-Mace"]=1,["2H-Sword"]=1,["2H-Axe"]=1,
+               ["Shield"]=1,["Libram"]=1},
+    Druid   = {["2H-Polearm"]=1,["2H-Staff"]=1,["2H-StaffFeral"]=1,
+               ["1H-MaceHeal"]=1,["Off-Tome"]=1,["Idol"]=1},
+    Hunter  = {["Crossbow"]=1,["Thrown"]=1,["1H-Sword"]=1,["1H-Axe"]=1,
+               ["1H-Fist"]=1,["2H-Sword"]=1,["2H-Axe"]=1,["2H-Polearm"]=1},
+    Mage    = {["1H-SwordCaster"]=1,["2H-Staff"]=1,["Wand"]=1,["Off-Orb"]=1},
+    Priest  = {["1H-MaceHeal"]=1,["2H-Staff"]=1,["Wand"]=1,["Off-Tome"]=1},
+    Rogue   = {["1H-Dagger"]=1,["1H-Sword"]=1,["1H-Mace"]=1,["1H-Fist"]=1,
+               ["1H-Axe"]=1,["Thrown"]=1},
+    Shaman  = {["1H-Mace"]=1,["1H-Axe"]=1,["1H-Fist"]=1,
+               ["2H-Mace"]=1,["2H-Axe"]=1,
+               ["Shield"]=1,["Totem"]=1},
+    Warlock = {["1H-SwordCaster"]=1,["2H-Staff"]=1,["Wand"]=1,["Off-Orb"]=1},
+}
+
+-- Season 2 (Merciless Gladiator's) weapons/offhands/relics with confirmed item IDs
+-- ids = list of item variants; first is shown in tooltip header, others listed below
+local S2_WEAPONS = {
+    {slot="1H Dagger",         key="1H-Dagger",      ids={32044,32046},       ap=2175, rating=1700},
+    {slot="1H Sword (Phys)",   key="1H-Sword",       ids={32052,32027},       ap=2175, rating=1700},
+    {slot="1H Mace (Phys)",    key="1H-Mace",        ids={32026,31958},       ap=2175, rating=1700},
+    {slot="1H Axe",            key="1H-Axe",         ids={31965,31985},       ap=2175, rating=1700},
+    {slot="1H Fist Weapon",    key="1H-Fist",        ids={32028,32003},       ap=2175, rating=1700},
+    {slot="1H Caster Sword",   key="1H-SwordCaster", ids={32053},             ap=2175, rating=1700},
+    {slot="1H Mace (Heal)",    key="1H-MaceHeal",    ids={32963,32964},       ap=2610, rating=1700},
+    {slot="2H Sword",          key="2H-Sword",       ids={31984},             ap=3110, rating=1700},
+    {slot="2H Axe",            key="2H-Axe",         ids={31966},             ap=3110, rating=1700},
+    {slot="2H Mace",           key="2H-Mace",        ids={32014},             ap=3110, rating=1700},
+    {slot="2H Polearm",        key="2H-Polearm",     ids={32025},             ap=3110, rating=1700},
+    {slot="2H Staff (Caster)", key="2H-Staff",       ids={32055},             ap=3110, rating=1700},
+    {slot="2H Staff (Feral)",  key="2H-StaffFeral",  ids={31959},             ap=3110, rating=1700},
+    {slot="Crossbow",          key="Crossbow",       ids={31986},             ap=3110, rating=1700},
+    {slot="Thrown",            key="Thrown",         ids={32054},             ap=830,  rating=1700},
+    {slot="Wand",              key="Wand",           ids={32962},             ap=830,  rating=1700},
+    {slot="Shield (Tank/Heal)",key="Shield",         ids={32045},             ap=1550, rating=1700},
+    {slot="Shield (DPS/Alt)",  key="Shield",         ids={33309,33313},       ap=1550, rating=1700},
+    {slot="Off-hand Tome",     key="Off-Tome",       ids={31978},             ap=930,  rating=1700},
+    {slot="Off-hand Orb",      key="Off-Orb",        ids={32961},             ap=930,  rating=1700},
+    {slot="Relic — Idol",      key="Idol",           ids={33943,33946,33076}, ap=930,  rating=0   },
+    {slot="Relic — Libram",    key="Libram",         ids={33077,33937,33949}, ap=930,  rating=0   },
+    {slot="Relic — Totem",     key="Totem",          ids={33078,33952,33940}, ap=930,  rating=0   },
+}
+
+-- Season 1 (Gladiator's) weapons/offhands/relics with confirmed item IDs
+local S1_WEAPONS = {
+    {slot="1H Dagger",         key="1H-Dagger",      ids={28312,28310},       ap=1875, rating=1500},
+    {slot="1H Sword (Phys)",   key="1H-Sword",       ids={28295,28307},       ap=1875, rating=1500},
+    {slot="1H Mace (Phys)",    key="1H-Mace",        ids={28305,28302},       ap=1875, rating=1500},
+    {slot="1H Axe",            key="1H-Axe",         ids={28308,28309},       ap=1875, rating=1500},
+    {slot="1H Fist Weapon",    key="1H-Fist",        ids={28313,28314},       ap=1875, rating=1500},
+    {slot="1H Caster Sword",   key="1H-SwordCaster", ids={28297},             ap=1875, rating=1500},
+    {slot="1H Mace (Heal)",    key="1H-MaceHeal",    ids={32450,32451},       ap=2250, rating=1500},
+    {slot="2H Sword",          key="2H-Sword",       ids={24550},             ap=2625, rating=1500},
+    {slot="2H Axe",            key="2H-Axe",         ids={28298},             ap=2625, rating=1500},
+    {slot="2H Mace",           key="2H-Mace",        ids={28476},             ap=2625, rating=1500},
+    {slot="2H Polearm",        key="2H-Polearm",     ids={28300},             ap=2625, rating=1500},
+    {slot="2H Staff (Caster)", key="2H-Staff",       ids={24557},             ap=2625, rating=1500},
+    {slot="2H Staff (Feral)",  key="2H-StaffFeral",  ids={28299},             ap=2625, rating=1500},
+    {slot="Crossbow",          key="Crossbow",       ids={28294},             ap=2625, rating=1500},
+    {slot="Thrown",            key="Thrown",         ids={28319},             ap=700,  rating=1500},
+    {slot="Wand",              key="Wand",           ids={28320},             ap=700,  rating=1500},
+    {slot="Shield",            key="Shield",         ids={28358},             ap=1375, rating=1500},
+    {slot="Off-hand Tome",     key="Off-Tome",       ids={28346},             ap=875,  rating=1500},
+    {slot="Off-hand Orb",      key="Off-Orb",        ids={32452},             ap=875,  rating=1500},
+    {slot="Relic — Idol",      key="Idol",           ids={33942,33945,28355}, ap=875,  rating=0   },
+    {slot="Relic — Libram",    key="Libram",         ids={28356,33936,33948}, ap=875,  rating=0   },
+    {slot="Relic — Totem",     key="Totem",          ids={28357,33951,33939}, ap=875,  rating=0   },
+}
+
+-- S2 Veteran's honor off-pieces by armor type: { id, name, honor, marks }
+-- Neck/Ring universal; Bracers/Belt/Boots per armor type (multiple style variants listed)
+local S2_HONOR_UNIVERSAL = {
+    { slot="Neck", items={
+        {id=33066,name="Veteran's Pendant of Triumph"},
+        {id=33068,name="Veteran's Pendant of Salvation"},
+        {id=33065,name="Veteran's Pendant of Dominance"},
+        {id=33067,name="Veteran's Pendant of Conquest"},
+    }, honor=12695, marks={EotS=5} },
+    { slot="Ring", items={
+        {id=33057,name="Veteran's Band of Triumph"},
+        {id=33064,name="Veteran's Band of Salvation"},
+        {id=33056,name="Veteran's Band of Dominance"},
+    }, honor=12695, marks={AV=5} },
+}
+local S2_HONOR_BYARMOR = {
+    Cloth = {
+        { slot="Bracers", honor=9785,  marks={WSG=10}, items={
+            {id=32820,name="Veteran's Silk Cuffs"},
+            {id=32811,name="Veteran's Dreadweave Cuffs"},
+            {id=32980,name="Veteran's Mooncloth Cuffs"},
+        }},
+        { slot="Belt", honor=14815, marks={AB=10}, items={
+            {id=32807,name="Veteran's Silk Belt"},
+            {id=32799,name="Veteran's Dreadweave Belt"},
+            {id=32979,name="Veteran's Mooncloth Belt"},
+        }},
+        { slot="Boots", honor=14815, marks={EotS=20}, items={
+            {id=32795,name="Veteran's Silk Footguards"},
+            {id=32787,name="Veteran's Dreadweave Stalkers"},
+            {id=32981,name="Veteran's Mooncloth Slippers"},
+        }},
+    },
+    Leather = {
+        { slot="Bracers", honor=9785,  marks={WSG=10}, items={
+            {id=32810,name="Veteran's Dragonhide Bracers"},
+            {id=32814,name="Veteran's Leather Bracers"},
+            {id=32812,name="Veteran's Kodohide Bracers"},
+            {id=32821,name="Veteran's Wyrmhide Bracers"},
+        }},
+        { slot="Belt", honor=14815, marks={AB=10}, items={
+            {id=32798,name="Veteran's Dragonhide Belt"},
+            {id=32802,name="Veteran's Leather Belt"},
+            {id=32800,name="Veteran's Kodohide Belt"},
+            {id=32808,name="Veteran's Wyrmhide Belt"},
+        }},
+        { slot="Boots", honor=14815, marks={EotS=20}, items={
+            {id=32786,name="Veteran's Dragonhide Boots"},
+            {id=32790,name="Veteran's Leather Boots"},
+            {id=32788,name="Veteran's Kodohide Boots"},
+            {id=32796,name="Veteran's Wyrmhide Boots"},
+        }},
+    },
+    Mail = {
+        { slot="Bracers", honor=9785,  marks={WSG=10}, items={
+            {id=32997,name="Veteran's Ringmail Bracers"},
+            {id=32817,name="Veteran's Mail Bracers"},
+            {id=32816,name="Veteran's Linked Bracers"},
+            {id=32809,name="Veteran's Chain Bracers"},
+        }},
+        { slot="Belt", honor=14815, marks={AB=10}, items={
+            {id=32998,name="Veteran's Ringmail Girdle"},
+            {id=32804,name="Veteran's Mail Girdle"},
+            {id=32803,name="Veteran's Linked Girdle"},
+            {id=32797,name="Veteran's Chain Girdle"},
+        }},
+        { slot="Boots", honor=14815, marks={EotS=20}, items={
+            {id=32999,name="Veteran's Ringmail Sabatons"},
+            {id=32792,name="Veteran's Mail Sabatons"},
+            {id=32791,name="Veteran's Linked Sabatons"},
+            {id=32785,name="Veteran's Chain Sabatons"},
+        }},
+    },
+    Plate = {
+        { slot="Bracers", honor=9785,  marks={WSG=10}, items={
+            {id=32819,name="Veteran's Scaled Bracers"},
+            {id=32818,name="Veteran's Plate Bracers"},
+            {id=32989,name="Veteran's Ornamented Bracers"},
+            {id=32813,name="Veteran's Lamellar Bracers"},
+        }},
+        { slot="Belt", honor=14815, marks={AB=10}, items={
+            {id=32806,name="Veteran's Scaled Belt"},
+            {id=32805,name="Veteran's Plate Belt"},
+            {id=32988,name="Veteran's Ornamented Belt"},
+            {id=32801,name="Veteran's Lamellar Belt"},
+        }},
+        { slot="Boots", honor=14815, marks={EotS=20}, items={
+            {id=32794,name="Veteran's Scaled Greaves"},
+            {id=32793,name="Veteran's Plate Greaves"},
+            {id=32990,name="Veteran's Ornamented Greaves"},
+            {id=32789,name="Veteran's Lamellar Greaves"},
+        }},
+    },
+}
+
+-- S1 General's/Marshal's honor off-pieces (faction variants both listed)
+local S1_HONOR_UNIVERSAL = {
+    { slot="Neck", items={
+        {id=28244,name="Pendant of Triumph"},{id=28245,name="Pendant of Dominance"},
+    }, honor=11650, marks={} },
+    { slot="Ring", items={
+        {id=28246,name="Band of Triumph"},{id=28247,name="Band of Dominance"},
+    }, honor=11650, marks={} },
+}
+local S1_HONOR_BYARMOR = {
+    Cloth = {
+        { slot="Bracers", honor=8910, marks={WSG=10}, items={
+            {id=29002,name="Marshal's Silk Cuffs"},{id=28411,name="General's Silk Cuffs"},
+            {id=28981,name="Marshal's Dreadweave Cuffs"},{id=28405,name="General's Dreadweave Cuffs"},
+            {id=32977,name="Marshal's Mooncloth Cuffs"},{id=32973,name="General's Mooncloth Cuffs"},
+        }},
+        { slot="Belt", honor=13310, marks={AB=10}, items={
+            {id=29001,name="Marshal's Silk Belt"},{id=28409,name="General's Silk Belt"},
+            {id=28980,name="Marshal's Dreadweave Belt"},{id=28404,name="General's Dreadweave Belt"},
+            {id=32976,name="Marshal's Mooncloth Belt"},{id=32974,name="General's Mooncloth Belt"},
+        }},
+        { slot="Boots", honor=13310, marks={EotS=20}, items={
+            {id=29003,name="Marshal's Silk Footguards"},{id=28410,name="General's Silk Footguards"},
+            {id=28982,name="Marshal's Dreadweave Stalkers"},{id=28402,name="General's Dreadweave Stalkers"},
+            {id=32978,name="Marshal's Mooncloth Slippers"},{id=32975,name="General's Mooncloth Slippers"},
+        }},
+    },
+    Leather = {
+        { slot="Bracers", honor=8910, marks={WSG=10}, items={
+            {id=28978,name="Marshal's Dragonhide Bracers"},{id=28445,name="General's Dragonhide Bracers"},
+            {id=28988,name="Marshal's Leather Bracers"},{id=28424,name="General's Leather Bracers"},
+            {id=31599,name="Marshal's Kodohide Bracers"},{id=31598,name="General's Kodohide Bracers"},
+            {id=29006,name="Marshal's Wyrmhide Bracers"},{id=28448,name="General's Wyrmhide Bracers"},
+        }},
+        { slot="Belt", honor=13310, marks={AB=10}, items={
+            {id=28976,name="Marshal's Dragonhide Belt"},{id=28443,name="General's Dragonhide Belt"},
+            {id=28986,name="Marshal's Leather Belt"},{id=28423,name="General's Leather Belt"},
+            {id=31596,name="Marshal's Kodohide Belt"},{id=31594,name="General's Kodohide Belt"},
+            {id=29004,name="Marshal's Wyrmhide Belt"},{id=28446,name="General's Wyrmhide Belt"},
+        }},
+        { slot="Boots", honor=13310, marks={EotS=20}, items={
+            {id=28977,name="Marshal's Dragonhide Boots"},{id=28444,name="General's Dragonhide Boots"},
+            {id=28987,name="Marshal's Leather Boots"},{id=28422,name="General's Leather Boots"},
+            {id=31597,name="Marshal's Kodohide Boots"},{id=31595,name="General's Kodohide Boots"},
+            {id=29005,name="Marshal's Wyrmhide Boots"},{id=28447,name="General's Wyrmhide Boots"},
+        }},
+    },
+    Mail = {
+        { slot="Bracers", honor=8910, marks={WSG=10}, items={
+            {id=32994,name="Marshal's Ringmail Bracers"},{id=32991,name="General's Ringmail Bracers"},
+            {id=28992,name="Marshal's Mail Bracers"},{id=28638,name="General's Mail Bracers"},
+            {id=28989,name="Marshal's Linked Bracers"},{id=28605,name="General's Linked Bracers"},
+            {id=28973,name="Marshal's Chain Bracers"},{id=28451,name="General's Chain Bracers"},
+        }},
+        { slot="Belt", honor=13310, marks={AB=10}, items={
+            {id=32995,name="Marshal's Ringmail Girdle"},{id=32992,name="General's Ringmail Girdle"},
+            {id=28993,name="Marshal's Mail Girdle"},{id=28639,name="General's Mail Girdle"},
+            {id=28990,name="Marshal's Linked Girdle"},{id=28629,name="General's Linked Girdle"},
+            {id=28974,name="Marshal's Chain Girdle"},{id=28450,name="General's Chain Girdle"},
+        }},
+        { slot="Boots", honor=13310, marks={EotS=20}, items={
+            {id=32996,name="Marshal's Ringmail Sabatons"},{id=32993,name="General's Ringmail Sabatons"},
+            {id=28994,name="Marshal's Mail Sabatons"},{id=28640,name="General's Mail Sabatons"},
+            {id=28991,name="Marshal's Linked Sabatons"},{id=28630,name="General's Linked Sabatons"},
+            {id=28975,name="Marshal's Chain Sabatons"},{id=28449,name="General's Chain Sabatons"},
+        }},
+    },
+    Plate = {
+        { slot="Bracers", honor=8910, marks={WSG=10}, items={
+            {id=28999,name="Marshal's Scaled Bracers"},{id=28646,name="General's Scaled Bracers"},
+            {id=28996,name="Marshal's Plate Bracers"},{id=28381,name="General's Plate Bracers"},
+            {id=32986,name="Marshal's Ornamented Bracers"},{id=32983,name="General's Ornamented Bracers"},
+            {id=28984,name="Marshal's Lamellar Bracers"},{id=28643,name="General's Lamellar Bracers"},
+        }},
+        { slot="Belt", honor=13310, marks={AB=10}, items={
+            {id=28998,name="Marshal's Scaled Belt"},{id=28644,name="General's Scaled Belt"},
+            {id=28995,name="Marshal's Plate Belt"},{id=28385,name="General's Plate Belt"},
+            {id=32985,name="Marshal's Ornamented Belt"},{id=32982,name="General's Ornamented Belt"},
+            {id=28983,name="Marshal's Lamellar Belt"},{id=28641,name="General's Lamellar Belt"},
+        }},
+        { slot="Boots", honor=13310, marks={EotS=20}, items={
+            {id=29000,name="Marshal's Scaled Greaves"},{id=28645,name="General's Scaled Greaves"},
+            {id=28997,name="Marshal's Plate Greaves"},{id=28383,name="General's Plate Greaves"},
+            {id=32987,name="Marshal's Ornamented Greaves"},{id=32984,name="General's Ornamented Greaves"},
+            {id=28985,name="Marshal's Lamellar Greaves"},{id=28642,name="General's Lamellar Greaves"},
+        }},
+    },
 }
 
 -- ============================================================
@@ -512,18 +803,6 @@ minimapButton:SetScript("OnMouseUp", function()
     MMIconZoom(false)
 end)
 
-minimapButton:SetScript("OnClick", function(self, btn)
-    GameTooltip:Hide()
-    if mmIsDragging then return end
-    if btn == "LeftButton" then
-        if frame:IsShown() then frame:Hide() else OpenBeanArena() end
-    elseif btn == "RightButton" then
-        ShowOptions()
-    elseif btn == "MiddleButton" then
-        if cFrame:IsShown() then cFrame:Hide() else OpenCommands() end
-    end
-end)
-
 minimapButton:SetScript("OnEnter", function(self)
     if mmIsDragging then return end
     GameTooltip:SetOwner(self, "ANCHOR_LEFT")
@@ -655,7 +934,7 @@ titleFS:SetJustifyH("RIGHT")
 
 local versionFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 versionFS:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -36, -27)
-versionFS:SetText("|cff666666v0.3.2  •  TBC Anniversary|r")
+versionFS:SetText("|cff666666v0.3.3  •  TBC Anniversary|r")
 versionFS:SetJustifyH("RIGHT")
 
 local mainClose = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
@@ -1137,16 +1416,11 @@ do
 end
 
 -- ============================================================
--- POPUP: ARENA GEAR COSTS
+-- POPUP: ARENA GEAR COSTS  (class + season aware, with item tooltips)
 -- ============================================================
 do
-    local PW      = 360
-    local NUM     = #ARENA_GEAR_FULL
-    local ROW_H   = 18
-    local PH      = 80 + NUM * ROW_H + 20
-    local INNER_W = PW - 32
-    local AGC     = { slot=18, ap=200, rating=280 }
-
+    local PW = 430
+    local PH = 560
     arenaGearFrame = MakeBGFrame("BeanArenaArenaGearFrame", UIParent, PW, PH)
     arenaGearFrame:SetFrameStrata("HIGH")
     arenaGearFrame:SetMovable(true); arenaGearFrame:EnableMouse(true)
@@ -1156,74 +1430,195 @@ do
     arenaGearFrame:Hide()
     RegisterEsc(arenaGearFrame)
 
-    local t = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    t:SetPoint("TOP", arenaGearFrame, "TOP", 0, -14)
-    t:SetText("|cffFFD700Arena Gear Costs|r")
+    local agTitle = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    agTitle:SetPoint("TOP", arenaGearFrame, "TOP", 0, -12)
+    agTitle:SetText("|cffFFD700Arena Gear|r")
 
-    local c = CreateFrame("Button", nil, arenaGearFrame, "UIPanelCloseButton")
-    c:SetPoint("TOPRIGHT", arenaGearFrame, "TOPRIGHT", -4, -4)
-    c:SetScript("OnClick", function() arenaGearFrame:Hide() end)
+    local agClose = CreateFrame("Button", nil, arenaGearFrame, "UIPanelCloseButton")
+    agClose:SetPoint("TOPRIGHT", arenaGearFrame, "TOPRIGHT", -4, -4)
+    agClose:SetScript("OnClick", function() arenaGearFrame:Hide() end)
 
-    local sub = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    sub:SetPoint("TOP", arenaGearFrame, "TOP", 0, -30)
-    sub:SetText("|cffAAAAAAAASeason 2 (Merciless Gladiator)  —  Arena Points required|r")
-    MakeLine(arenaGearFrame, -42, INNER_W, 16)
+    -- Season toggle buttons
+    local agSeason = 2
+    local agS1Btn = CreateFrame("Button", nil, arenaGearFrame, "UIPanelButtonTemplate")
+    agS1Btn:SetSize(70, 22); agS1Btn:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 12, -32)
+    agS1Btn:SetText("Season 1"); agS1Btn:GetFontString():SetFontObject("GameFontNormalSmall")
+    local agS2Btn = CreateFrame("Button", nil, arenaGearFrame, "UIPanelButtonTemplate")
+    agS2Btn:SetSize(70, 22); agS2Btn:SetPoint("LEFT", agS1Btn, "RIGHT", 4, 0)
+    agS2Btn:SetText("Season 2"); agS2Btn:GetFontString():SetFontObject("GameFontNormalSmall")
 
-    local function AGHdr(x, y, txt)
-        local f = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        f:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", x, y)
-        f:SetText("|cffAAAAAA" .. txt .. "|r")
-    end
-    AGHdr(AGC.slot, -50, "Item Slot"); AGHdr(AGC.ap, -50, "AP Cost"); AGHdr(AGC.rating, -50, "Min Rating")
-    MakeLine(arenaGearFrame, -61, INNER_W, 16)
+    -- Class dropdown
+    local agClassLbl = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    agClassLbl:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 162, -37)
+    agClassLbl:SetText("|cffAAAAAA Class:|r")
+    local agClassDD = CreateFrame("Frame", "BeanArenaAgClassDD", arenaGearFrame, "UIDropDownMenuTemplate")
+    UIDropDownMenu_SetWidth(agClassDD, 120)
+    agClassDD:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 193, -44)
 
-    local agRows = {}
-    for i, item in ipairs(ARENA_GEAR_FULL) do
-        local y = -70 - (i - 1) * ROW_H
-        local slotFS = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        slotFS:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", AGC.slot, y)
-        slotFS:SetText(item.slot); slotFS:SetTextColor(0.85, 0.85, 0.85)
-        local apFS = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        apFS:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", AGC.ap, y)
-        apFS:SetText(string.format("|cffFFD700%d|r", item.ap))
-        local ratingFS = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        ratingFS:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", AGC.rating, y)
-        ratingFS:SetText(item.rating > 0 and tostring(item.rating) or "|cff666666None|r")
-        agRows[i] = { ratingFS=ratingFS, item=item }
-    end
+    -- Scroll area
+    local agScr = CreateFrame("ScrollFrame", "BeanArenaAgScr", arenaGearFrame, "UIPanelScrollFrameTemplate")
+    agScr:SetPoint("TOPLEFT",     arenaGearFrame, "TOPLEFT",     10, -62)
+    agScr:SetPoint("BOTTOMRIGHT", arenaGearFrame, "BOTTOMRIGHT", -28, 10)
+    local agCnt = CreateFrame("Frame", nil, agScr)
+    agCnt:SetWidth(PW - 52)
+    agCnt:SetHeight(10)
+    agScr:SetScrollChild(agCnt)
 
-    MakeLine(arenaGearFrame, -70 - NUM * ROW_H, INNER_W, 16)
-    local foot = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    foot:SetPoint("BOTTOMLEFT", arenaGearFrame, "BOTTOMLEFT", 18, 10)
-    foot:SetText("|cff888888Rating shown in |cffFF4444red|r|cff888888 if below your best.|r")
+    local agClass = "Warrior"
+    local CW2 = PW - 52   -- matches agCnt:SetWidth(PW-52)
+    local ACOL = { slot=0, ap=CW2-140, rat=CW2-68 }
 
-    BeanArena_RefreshArenaGearPopup = function()
-        local r2, r3, r5 = GetLiveRatings()
-        local best = math.max(r2, r3, r5)
-        for _, row in ipairs(agRows) do
-            if row.item.rating > 0 then
-                if best >= row.item.rating then
-                    row.ratingFS:SetText(string.format("|cff00FF00%d|r", row.item.rating))
-                else
-                    row.ratingFS:SetText(string.format("|cffFF4444%d|r", row.item.rating))
+    local function BuildArenaContent()
+        for _, ch in ipairs({agCnt:GetChildren()}) do ch:Hide() end
+        for _, r  in ipairs({agCnt:GetRegions()})  do r:Hide()  end
+
+        local weaponList = agSeason == 2 and S2_WEAPONS or S1_WEAPONS
+        local setNames   = agSeason == 2 and CLASS_SET_S2 or CLASS_SET_S1
+        local filter     = CLASS_WEAPONS[agClass] or {}
+        local r2,r3,r5   = GetLiveRatings()
+        local bestRating = math.max(r2, r3, r5)
+        local cy = -2
+
+        local function AGLine()
+            local d = agCnt:CreateTexture(nil,"ARTWORK")
+            d:SetSize(CW2,1); d:SetPoint("TOPLEFT",agCnt,"TOPLEFT",0,cy-2)
+            d:SetColorTexture(0.3,0.3,0.3,0.5); cy=cy-8
+        end
+        local function AGHdr(txt)
+            local h = agCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
+            h:SetPoint("TOPLEFT",agCnt,"TOPLEFT",0,cy)
+            h:SetText("|cff00CCFF"..txt.."|r"); cy=cy-16
+        end
+        local function AGColHdr()
+            local function CH(x,t)
+                local f=agCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                f:SetPoint("TOPLEFT",agCnt,"TOPLEFT",x,cy)
+                f:SetText("|cffAAAAAA"..t.."|r")
+            end
+            CH(ACOL.slot,"Slot"); CH(ACOL.ap,"AP"); CH(ACOL.rat,"Rating")
+            cy=cy-14; AGLine()
+        end
+
+        -- ─── 5-piece armor set ───────────────────────────────────
+        local setName = setNames[agClass] or (agClass.." Set")
+        AGHdr("Armor Set  |cffAAAAAA— "..setName.."|r")
+        AGColHdr()
+        local armorSlots = {
+            {slot="Gloves",    ap=agSeason==2 and 930  or 875,  rating=0   },
+            {slot="Helmet",    ap=agSeason==2 and 1550 or 1375, rating=0   },
+            {slot="Chest",     ap=agSeason==2 and 1550 or 1375, rating=0   },
+            {slot="Legs",      ap=agSeason==2 and 1550 or 1375, rating=0   },
+            {slot="Shoulders", ap=agSeason==2 and 1245 or 1125, rating=2000},
+        }
+        for _, row in ipairs(armorSlots) do
+            local rCol = (row.rating==0 or bestRating>=row.rating) and "00FF00" or "FF4444"
+            local function FS2(x,t)
+                local f=agCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                f:SetPoint("TOPLEFT",agCnt,"TOPLEFT",x,cy); f:SetText(t)
+            end
+            FS2(ACOL.slot, "|cffCCCCCC"..row.slot.."|r")
+            FS2(ACOL.ap,   "|cffFFD700"..row.ap.."|r")
+            FS2(ACOL.rat,  row.rating>0 and ("|cff"..rCol..row.rating.."|r") or "|cff00FF00None|r")
+            cy=cy-15
+        end
+        cy=cy-4
+
+        -- ─── Weapons / off-hands / relics ────────────────────────
+        AGHdr("Weapons & Off-hands  |cffAAAAAA— "..agClass.." (hover for tooltip)|r")
+        AGColHdr()
+        local anyShown = false
+        for _, wep in ipairs(weaponList) do
+            if filter[wep.key] then
+                anyShown = true
+                local rCol = (wep.rating==0 or bestRating>=wep.rating) and "00FF00" or "FF4444"
+                local rowBtn = CreateFrame("Button", nil, agCnt)
+                rowBtn:SetSize(CW2, 15)
+                rowBtn:SetPoint("TOPLEFT", agCnt, "TOPLEFT", 0, cy)
+                rowBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+                local function BFS(x,t)
+                    local f=rowBtn:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                    f:SetPoint("LEFT",rowBtn,"LEFT",x,0); f:SetText(t)
                 end
+                BFS(ACOL.slot, "|cffCCCCCC"..wep.slot.."|r")
+                BFS(ACOL.ap,   "|cffFFD700"..wep.ap.."|r")
+                BFS(ACOL.rat,  wep.rating>0 and ("|cff"..rCol..wep.rating.."|r") or "|cff00FF00None|r")
+                -- Tooltip on hover
+                local capturedWep = wep
+                rowBtn:SetScript("OnEnter", function(self)
+                    if capturedWep.ids and capturedWep.ids[1] then
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetHyperlink("item:"..capturedWep.ids[1])
+                        if #capturedWep.ids > 1 then
+                            GameTooltip:AddLine(string.format(
+                                "|cffAAAAAA+ %d more style variant%s (same stats)|r",
+                                #capturedWep.ids-1, #capturedWep.ids>2 and "s" or ""))
+                        end
+                        GameTooltip:Show()
+                    end
+                end)
+                rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                cy=cy-15
             end
         end
+        if not anyShown then
+            local nf=agCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+            nf:SetPoint("TOPLEFT",agCnt,"TOPLEFT",0,cy)
+            nf:SetText("|cff666666No weapons defined for "..agClass.."|r")
+            cy=cy-15
+        end
+        agCnt:SetHeight(math.abs(cy)+20)
     end
-    arenaGearFrame:SetScript("OnShow", BeanArena_RefreshArenaGearPopup)
+
+    -- Class dropdown init
+    local function AgClassInit()
+        UIDropDownMenu_Initialize(agClassDD, function()
+            for _, cls in ipairs(CLASS_LIST) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = cls; info.value = cls
+                info.notCheckable = false
+                info.checked = (agClass == cls)
+                info.func = function()
+                    agClass = cls
+                    UIDropDownMenu_SetText(agClassDD, cls)
+                    BuildArenaContent()
+                    CloseDropDownMenus()
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end, "MENU")
+    end
+
+    agS1Btn:SetScript("OnClick", function()
+        agSeason = 1; UIDropDownMenu_SetText(agClassDD, agClass)
+        BuildArenaContent()
+    end)
+    agS2Btn:SetScript("OnClick", function()
+        agSeason = 2; UIDropDownMenu_SetText(agClassDD, agClass)
+        BuildArenaContent()
+    end)
+
+    arenaGearFrame:SetScript("OnShow", function()
+        -- Default class to player's own class
+        local _, cf = UnitClass("player")
+        local cm = {WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
+                    PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
+        agClass = cm[cf or ""] or "Warrior"
+        AgClassInit()
+        UIDropDownMenu_SetText(agClassDD, agClass)
+        BuildArenaContent()
+    end)
+
+    BeanArena_RefreshArenaGearPopup = function()
+        if arenaGearFrame:IsShown() then BuildArenaContent() end
+    end
 end
 
 -- ============================================================
--- POPUP: HONOR GEAR COSTS
+-- POPUP: HONOR GEAR COSTS  (class + season aware, with item tooltips)
 -- ============================================================
 do
-    local PW      = 500
-    local NUM     = #HONOR_GEAR_FULL
-    local ROW_H   = 18
-    local PH      = 80 + NUM * ROW_H + 20
-    local INNER_W = PW - 32
-    local HGP     = { slot=18, honor=110, marks=230, have=340 }
-
+    local PW = 480
+    local PH = 560
     honorGearFrame = MakeBGFrame("BeanArenaHonorGearFrame", UIParent, PW, PH)
     honorGearFrame:SetFrameStrata("HIGH")
     honorGearFrame:SetMovable(true); honorGearFrame:EnableMouse(true)
@@ -1233,76 +1628,196 @@ do
     honorGearFrame:Hide()
     RegisterEsc(honorGearFrame)
 
-    local t = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    t:SetPoint("TOP", honorGearFrame, "TOP", 0, -14)
-    t:SetText("|cffFFD700Honor Gear Costs|r")
+    local hgTitle = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    hgTitle:SetPoint("TOP", honorGearFrame, "TOP", 0, -12)
+    hgTitle:SetText("|cffFFD700Honor Gear|r")
 
-    local c = CreateFrame("Button", nil, honorGearFrame, "UIPanelCloseButton")
-    c:SetPoint("TOPRIGHT", honorGearFrame, "TOPRIGHT", -4, -4)
-    c:SetScript("OnClick", function() honorGearFrame:Hide() end)
+    local hgClose = CreateFrame("Button", nil, honorGearFrame, "UIPanelCloseButton")
+    hgClose:SetPoint("TOPRIGHT", honorGearFrame, "TOPRIGHT", -4, -4)
+    hgClose:SetScript("OnClick", function() honorGearFrame:Hide() end)
 
-    local sub = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    sub:SetPoint("TOP", honorGearFrame, "TOP", 0, -30)
-    sub:SetText("|cffAAAAAAAASeason 2 (Veteran's off-pieces)  —  Honor + BG Marks required|r")
-    MakeLine(honorGearFrame, -42, INNER_W, 16)
+    -- Season toggle buttons
+    local hgSeason = 2
+    local hgS1Btn = CreateFrame("Button", nil, honorGearFrame, "UIPanelButtonTemplate")
+    hgS1Btn:SetSize(70, 22); hgS1Btn:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", 12, -32)
+    hgS1Btn:SetText("Season 1"); hgS1Btn:GetFontString():SetFontObject("GameFontNormalSmall")
+    local hgS2Btn = CreateFrame("Button", nil, honorGearFrame, "UIPanelButtonTemplate")
+    hgS2Btn:SetSize(70, 22); hgS2Btn:SetPoint("LEFT", hgS1Btn, "RIGHT", 4, 0)
+    hgS2Btn:SetText("Season 2"); hgS2Btn:GetFontString():SetFontObject("GameFontNormalSmall")
 
-    local function HGHdr(x, y, txt)
-        local f = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        f:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", x, y)
-        f:SetText("|cffAAAAAA" .. txt .. "|r")
+    -- Class dropdown
+    local hgClassLbl = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    hgClassLbl:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", 162, -37)
+    hgClassLbl:SetText("|cffAAAAAA Class:|r")
+    local hgClassDD = CreateFrame("Frame", "BeanArenaHgClassDD", honorGearFrame, "UIDropDownMenuTemplate")
+    UIDropDownMenu_SetWidth(hgClassDD, 120)
+    hgClassDD:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", 193, -44)
+
+    -- Scroll area
+    local hgScr = CreateFrame("ScrollFrame", "BeanArenaHgScr", honorGearFrame, "UIPanelScrollFrameTemplate")
+    hgScr:SetPoint("TOPLEFT",     honorGearFrame, "TOPLEFT",     10, -62)
+    hgScr:SetPoint("BOTTOMRIGHT", honorGearFrame, "BOTTOMRIGHT", -28, 10)
+    local hgCnt = CreateFrame("Frame", nil, hgScr)
+    hgCnt:SetWidth(PW - 52)
+    hgCnt:SetHeight(10)
+    hgScr:SetScrollChild(hgCnt)
+
+    local hgClass = "Warrior"
+    local HCW = PW - 52   -- matches hgCnt:SetWidth(PW-52)
+    local HCOL = { name=0, honor=HCW-195, marks=HCW-130, have=HCW-48 }
+
+    local function BuildHonorContent()
+        for _, ch in ipairs({hgCnt:GetChildren()}) do ch:Hide() end
+        for _, r  in ipairs({hgCnt:GetRegions()})  do r:Hide()  end
+
+        local armorType  = CLASS_ARMOR_TYPE[hgClass] or "Cloth"
+        local universal  = hgSeason == 2 and S2_HONOR_UNIVERSAL or S1_HONOR_UNIVERSAL
+        local byArmor    = hgSeason == 2 and S2_HONOR_BYARMOR   or S1_HONOR_BYARMOR
+        local armorRows  = byArmor[armorType] or {}
+        local honor      = GetCurrentHonor()
+        local marks      = GetPvPMarkCounts()
+        local fmt        = BreakUpLargeNumbers or tostring
+        local cy         = -2
+
+        local function HLine()
+            local d=hgCnt:CreateTexture(nil,"ARTWORK")
+            d:SetSize(HCW,1); d:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",0,cy-2)
+            d:SetColorTexture(0.3,0.3,0.3,0.5); cy=cy-8
+        end
+        local function HGHdr(txt)
+            local h=hgCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
+            h:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",0,cy)
+            h:SetText("|cff00CCFF"..txt.."|r"); cy=cy-16
+        end
+        local function ColHdrs()
+            local function CH(x,t)
+                local f=hgCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                f:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",x,cy)
+                f:SetText("|cffAAAAAA"..t.."|r")
+            end
+            CH(HCOL.name,"Item"); CH(HCOL.honor,"Honor"); CH(HCOL.marks,"Marks"); CH(HCOL.have,"You Have")
+            cy=cy-14; HLine()
+        end
+
+        -- Helper: build one item row (hoverable for tooltip)
+        local function ItemRow(item, slotData)
+            local honorMet = honor >= slotData.honor
+            local hCol = honorMet and "00FF00" or "FF4444"
+            -- Marks check
+            local allMet = true
+            local mparts = {}
+            for bg, req in pairs(slotData.marks) do
+                local have = marks[bg] or 0
+                if have < req then allMet = false end
+                local mc = have >= req and "00FF00" or "FF4444"
+                mparts[#mparts+1] = string.format("|cff%s%d|r|cffAAAAAA/%d %s|r", mc, have, req, bg)
+            end
+            if #mparts == 0 then mparts[#mparts+1] = "|cff00FF00—|r" end
+
+            local rowBtn = CreateFrame("Button", nil, hgCnt)
+            rowBtn:SetSize(HCW, 15)
+            rowBtn:SetPoint("TOPLEFT", hgCnt, "TOPLEFT", 0, cy)
+            rowBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+
+            local function BFS(x, t)
+                local f = rowBtn:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                f:SetPoint("LEFT",rowBtn,"LEFT",x,0); f:SetText(t)
+            end
+            -- Item name (truncated to fit)
+            local dispName = item.name or ("item:"..item.id)
+            local cached = GetItemInfo(item.id)
+            if cached then dispName = cached end
+            BFS(HCOL.name,  "|cffCCCCCC"..dispName.."|r")
+            BFS(HCOL.honor, string.format("|cff%s%s|r", hCol, fmt(slotData.honor)))
+            BFS(HCOL.marks, table.concat(mparts,"  "))
+            BFS(HCOL.have,  (honorMet and allMet) and "|cff00FF00Ready!|r" or "|cffAAAAAA...|r")
+
+            -- Tooltip on hover
+            local capturedID = item.id
+            rowBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetHyperlink("item:"..capturedID)
+                GameTooltip:Show()
+            end)
+            rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            cy = cy - 15
+        end
+
+        -- ─── Neck & Ring (universal) ─────────────────────────────
+        HGHdr("Neck & Ring  |cffAAAAAA— all classes|r")
+        ColHdrs()
+        for _, slotData in ipairs(universal) do
+            local prev_cy = cy
+            for _, item in ipairs(slotData.items) do
+                ItemRow(item, slotData)
+            end
+            -- slot label on left of first item
+            if cy ~= prev_cy then cy = cy - 4 end
+        end
+        cy = cy - 4
+
+        -- ─── Bracers / Belt / Boots (armor-type specific) ─────────
+        HGHdr("Off-pieces  |cffAAAAAA— "..armorType.." ("..hgClass..")|r")
+        ColHdrs()
+        if #armorRows == 0 then
+            local nf=hgCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+            nf:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",0,cy)
+            nf:SetText("|cff666666No data for "..armorType.."|r"); cy=cy-15
+        else
+            for _, slotData in ipairs(armorRows) do
+                -- Slot label
+                local slbl=hgCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
+                slbl:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",0,cy)
+                slbl:SetText("|cff888888— "..slotData.slot.." —|r"); cy=cy-14
+                for _, item in ipairs(slotData.items) do
+                    ItemRow(item, slotData)
+                end
+                cy = cy - 4
+            end
+        end
+
+        hgCnt:SetHeight(math.abs(cy)+20)
     end
-    HGHdr(HGP.slot,-50,"Item Slot"); HGHdr(HGP.honor,-50,"Honor Cost")
-    HGHdr(HGP.marks,-50,"Marks Req."); HGHdr(HGP.have,-50,"You Have")
-    MakeLine(honorGearFrame, -61, INNER_W, 16)
 
-    local hgRows = {}
-    for i, gear in ipairs(HONOR_GEAR_FULL) do
-        local y = -70 - (i - 1) * ROW_H
-        local slotFS = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        slotFS:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", HGP.slot, y)
-        slotFS:SetText(gear.slot); slotFS:SetTextColor(0.85, 0.85, 0.85)
-        local honorFS = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        honorFS:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", HGP.honor, y)
-        honorFS:SetText(string.format("|cffFFD700%d|r", gear.honor))
-        local reqParts = {}
-        for bg, req in pairs(gear.marks) do table.insert(reqParts, req .. " " .. bg) end
-        table.sort(reqParts)
-        local marksReqFS = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        marksReqFS:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", HGP.marks, y)
-        marksReqFS:SetText("|cffAAAAAA" .. table.concat(reqParts, ", ") .. "|r")
-        local haveFS = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        haveFS:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", HGP.have, y)
-        haveFS:SetText("--")
-        hgRows[i] = { gear=gear, haveFS=haveFS }
+    -- Class dropdown init
+    local function HgClassInit()
+        UIDropDownMenu_Initialize(hgClassDD, function()
+            for _, cls in ipairs(CLASS_LIST) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = cls; info.value = cls
+                info.notCheckable = false
+                info.checked = (hgClass == cls)
+                info.func = function()
+                    hgClass = cls
+                    UIDropDownMenu_SetText(hgClassDD, cls)
+                    BuildHonorContent()
+                    CloseDropDownMenus()
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end, "MENU")
     end
 
-    MakeLine(honorGearFrame, -70 - NUM * ROW_H, INNER_W, 16)
-    local foot = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    foot:SetPoint("BOTTOMLEFT", honorGearFrame, "BOTTOMLEFT", 18, 10)
-    foot:SetText("|cff888888|cff00FF00Green|r|cff888888 = met.  |cffFF4444Red|r|cff888888 = still needed.|r")
+    hgS1Btn:SetScript("OnClick", function()
+        hgSeason = 1; BuildHonorContent()
+    end)
+    hgS2Btn:SetScript("OnClick", function()
+        hgSeason = 2; BuildHonorContent()
+    end)
+
+    honorGearFrame:SetScript("OnShow", function()
+        local _, cf = UnitClass("player")
+        local cm = {WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
+                    PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
+        hgClass = cm[cf or ""] or "Warrior"
+        HgClassInit()
+        UIDropDownMenu_SetText(hgClassDD, hgClass)
+        BuildHonorContent()
+    end)
 
     BeanArena_RefreshHonorGearPopup = function()
-        local honor = GetCurrentHonor()
-        local marks = GetPvPMarkCounts()
-        local fmt   = BreakUpLargeNumbers or tostring
-        for _, row in ipairs(hgRows) do
-            local gear     = row.gear
-            local honorMet = honor >= gear.honor
-            local parts    = {}
-            for bg, req in pairs(gear.marks) do
-                local have = marks[bg] or 0
-                local met  = have >= req
-                table.insert(parts, string.format("%s|cffAAAAAA/%d %s|r",
-                    met  and string.format("|cff00FF00%d", have)
-                         or  string.format("|cffFF4444%d", have), req, bg))
-            end
-            table.sort(parts)
-            local hColor   = honorMet and "00FF00" or "FF4444"
-            local honorStr = string.format("|cff%s%s/%s hon|r  ", hColor, fmt(honor), fmt(gear.honor))
-            row.haveFS:SetText(honorStr .. table.concat(parts, "  "))
-        end
+        if honorGearFrame:IsShown() then BuildHonorContent() end
     end
-    honorGearFrame:SetScript("OnShow", BeanArena_RefreshHonorGearPopup)
 end
 
 
@@ -1396,7 +1911,7 @@ do
 
     local iTitle = infoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     iTitle:SetPoint("TOP", infoFrame, "TOP", 0, -12)
-    iTitle:SetText("|cffFFD700BeanArena|r  |cff888888v0.3.2|r")
+    iTitle:SetText("|cffFFD700BeanArena|r  |cff888888v0.3.3|r")
 
     MakeLine(infoFrame, -30, IW - 32, 14)
 
@@ -2195,7 +2710,7 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
         end
         UpdateMinimapPos()
         SetupPVPHook()
-        print("|cffFFD700[BeanArena]|r v0.3.2 loaded! /ba help")
+        print("|cffFFD700[BeanArena]|r v0.3.3 loaded! /ba help")
         if DB("openOnLogin") then OpenBeanArena() end
     elseif event == "PLAYER_LOGIN" then
         CHAR_NAME  = UnitName("player") or "Unknown"
