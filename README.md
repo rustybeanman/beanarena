@@ -1,34 +1,42 @@
 
-
 # BeanArena
 
-**Arena Point Calculator & History Tracker for WoW TBC Anniversary**
+**TBC Anniversary Arena Point Calculator & Honor Tracker**
 
-BeanArena is a lightweight addon that calculates your weekly arena point rewards, tracks your match history, and keeps your honor and battleground mark counts in one place.
+BeanArena is a lightweight addon for WoW TBC Anniversary that calculates weekly arena point rewards, tracks your honor, and provides a built-in reference for gear costs, weapons, CC/DR rules, and general PvP info — all in one place.
 
 ## Features
 
 ### Arena Point Calculator
 - **Live ratings** pulled automatically from the game API for 2v2, 3v3, and 5v5
-- **Games played tracking** with a visual indicator showing whether you've hit the 10-game minimum to qualify for points
-- **Best reward** calculation that identifies which bracket will earn you the most points this week
-- **Manual rating entry** to theorycraft "what if" scenarios without affecting live data
-
-### Arena History
-- Automatically records every arena match you play
-- Logs date, bracket, win/loss, match duration, and full team compositions (both friendly and enemy)
-- Class-colored player names for easy scanning
-- Stores up to 200 matches with the latest 100 displayed in a scrollable list
-- One-click history clear
+- **Games played tracking** with a visual indicator for the 10-game minimum
+- **Best reward** calculation — highlights which bracket earns the most points this week
+- **Manual rating entry** for "what if" theycrafting without affecting live data
+- **Rating Target calculator** — enter an AP goal to see the rating needed per bracket
 
 ### Honor & Battleground Marks
-- Current honor total
+- Current honor total with a cap bar and milestone markers
 - Countdown timer to the next weekly Tuesday reset
-- PvP mark counts for AV, WSG, AB, and EotS scanned directly from your bags
+- PvP mark counts for AV, WSG, AB, and EotS scanned from your bags
+
+### Reference Window
+One unified popup with a dropdown to switch between five sections:
+
+| Section | Contents |
+|---|---|
+| **Arena Gear** | Icon grid + cost table for S1/S2 arena sets, per-class, season toggle |
+| **Weapons** | All S1/S2 PvP weapons and relics with item tooltips |
+| **Honor Gear** | S1/S2 honor gear costs, auto-detected for your class |
+| **CC/DR Table** | Full cross-reference of CC categories and DR rules for all classes |
+| **Info** | Formula reference, bracket multipliers, point caps, and general tips |
+
+### Character Viewer
+- Tracks arena points, honor, and rating snapshots across all your characters
+- `/ba chars` or `/ba alts` to view or print alt PvP data
 
 ### Quality of Life
-- **Minimap button** — draggable to any position around your minimap
-- **Honor window integration** — optionally open BeanArena (and/or History) whenever you open the PvP/Honor panel
+- **Minimap button** — draggable to any position around the minimap
+- **PvP UI hook** — optionally open BeanArena when you press H to open the honor panel
 - All windows are draggable and remember their positions between sessions
 - ESC closes any open BeanArena window
 
@@ -36,59 +44,44 @@ BeanArena is a lightweight addon that calculates your weekly arena point rewards
 
 ## Installation
 
-1. Download or clone this repository
-2. Copy the `BeanArena` folder into your TBC Anniversary AddOns directory:
+1. Download the latest zip from the [Releases](../../releases) page (or clone this repo)
+2. Extract and copy the `beanarena` folder into your TBC Anniversary AddOns directory:
    ```
-   C:\Program Files (x86)\World of Warcraft\_anniversary_\Interface\AddOns\BeanArena\
+   World of Warcraft\_anniversary_\Interface\AddOns\beanarena\
    ```
 3. The folder should contain:
    ```
-   BeanArena/
+   beanarena/
    ├── BeanArena.toc
-   ├── BeanArena.lua
-   └── README.md
+   └── BeanArena.lua
    ```
 4. Restart WoW or type `/reload` if you're already in-game
 
 ---
 
-## Usage
+## Slash Commands
 
-### Minimap Button
-
-| Click | Action |
-|---|---|
-| Left-click | Toggle main BeanArena window |
-| Middle-click | Toggle commands reference window |
-| Right-click | Open options menu |
-
-### Slash Commands
-
-All commands use `/ap` (or `/beanarena` as an alias):
+All commands use `/ba` (or `/beanarena`):
 
 | Command | Description |
 |---|---|
-| `/ap` | Toggle main window |
-| `/ap history` | Toggle history window |
-| `/ap commands` | Toggle commands reference window |
-| `/ap points` | Print point breakdown to chat |
-| `/ap honor` | Print current honor to chat |
-| `/ap reset` | Print time until weekly reset |
-| `/ap marks` | Print BG mark counts to chat |
-| `/ap options` | Open options menu at cursor |
-| `/ap help` | Print help to chat |
-
-### Options Menu
-
-Right-click the minimap button to access options:
-
-- **Toggle BeanArena Window** — show/hide the main calculator
-- **Toggle History Window** — show/hide match history
-- **Toggle Commands Window** — show/hide the command reference
-- **Open With Honor Window** — automatically open BeanArena when you open the PvP/Honor panel (H key), with three modes:
-  - *BeanArena only* — just the main window
-  - *BeanArena + History* — both windows
-  - *Off* — disabled
+| `/ba` | Toggle main window |
+| `/ba calc [rating]` | AP for live ratings or a specific rating |
+| `/ba target <ap>` | Rating needed to earn a target AP amount |
+| `/ba honor [slot]` | Open honor window, or print slot cost to chat |
+| `/ba arena [slot]` | Open arena gear reference, or print slot cost to chat |
+| `/ba dr [class]` | Open CC/DR table, or print a class's CC list to chat |
+| `/ba gear` | Open arena gear costs section |
+| `/ba hgear` | Open honor gear costs section |
+| `/ba weapons` | Open weapons section |
+| `/ba info` | Open info section |
+| `/ba chars` | Open character viewer |
+| `/ba alts` | Print all alt PvP snapshots to chat |
+| `/ba points` | Print live rating AP breakdown to chat |
+| `/ba marks` | Print current BG mark counts to chat |
+| `/ba reset` | Print time until weekly reset |
+| `/ba commands` | Toggle commands reference window |
+| `/ba help` | Print all commands to chat |
 
 ---
 
@@ -114,13 +107,13 @@ Your weekly reward comes from whichever **single bracket** yields the highest po
 
 ## Saved Data
 
-BeanArena stores all data in `BeanArenaDB` (a WoW SavedVariable). This includes your manual rating entries, window positions, minimap button angle, option preferences, and your full arena match history. No data is sent externally.
+BeanArena stores data in `BeanArenaDB` (account-wide) and `BeanArenaCharDB` (per-character) as WoW SavedVariables. This includes window positions, option preferences, rating snapshots, and honor data. No data is sent externally.
 
 ---
 
 ## Compatibility
 
-- **Game version:** WoW TBC Anniversary (Interface 20504)
+- **Game version:** WoW TBC Anniversary (Interface 20505)
 - **Dependencies:** None
 - **Conflicts:** None known
 
