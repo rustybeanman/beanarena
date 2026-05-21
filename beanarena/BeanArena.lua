@@ -45,7 +45,17 @@
 -- v0.3.3 | 2026-05-20 | Arena Gear & Honor Gear popups: class dropdown + season toggle (S1/S2)
 --         |             Per-class weapon/relic filtering; Veteran's & General's off-pieces by armor type
 --         |             Item tooltip on hover for all weapons, off-hands, relics, and honor pieces
--- CURRENT: v0.3.3
+-- v0.3.4 | 2026-05-20 | Dedicated Weapons & Relics popup — all variants, one icon per item ID
+--         |             Fixes missing relics (3 icons per type, not 1); Weapons button on main frame
+--         |             Arena Gear popup now shows armor icon grid with per-class set variants
+-- v0.3.5 | 2026-05-20 | Arena Gear: real item icons + full WoW item tooltips (SetHyperlink)
+--         |             5-slot icon grid (Head/Chest/Legs/Gloves/Shoulders) x N variant cols
+--         |             All 17 S1 + 17 S2 set item IDs from AtlasLootClassic/Data/ItemSet.lua
+--         |             Shaman Earthshaker variant added to S1 & S2; Unicode chars fixed
+-- v0.3.6 | 2026-05-21 | Unified reference frame with section dropdown
+--         |             Arena Gear / Weapons / Honor Gear / CC/DR / Info in one window
+--         |             Honor Gear auto-detects player class (no class switcher)
+-- CURRENT: v0.3.6
 -- ============================================================
 
 -- ============================================================
@@ -229,20 +239,72 @@ local CLASS_ARMOR_TYPE = {
 }
 local CLASS_LIST = {"Druid","Hunter","Mage","Paladin","Priest","Rogue","Shaman","Warlock","Warrior"}
 
--- Arena set name prefix per class (no individual item IDs — verify in-game before adding)
-local CLASS_SET_S1 = {
-    Warrior="Gladiator's Plate",         Paladin="Gladiator's Redemption",
-    Druid="Gladiator's Kodohide/Dragonhide", Hunter="Gladiator's Chain",
-    Mage="Gladiator's Silk",             Priest="Gladiator's Mooncloth/Satin",
-    Rogue="Gladiator's Leather",         Shaman="Gladiator's Mail/Linked",
-    Warlock="Gladiator's Dreadweave",
+-- Arena set variant names per class per season.
+-- Each class lists all named set variants (spec-specific); 5 item icons shown per variant.
+-- Source: AtlasLootClassic/Data/ItemSet.lua (all item IDs verified).
+local CLASS_SETS_S1 = {
+    Warrior  = {"Gladiator's Plate"},
+    Paladin  = {"Gladiator's Redemption", "Gladiator's Vindication", "Gladiator's Aegis"},
+    Druid    = {"Gladiator's Kodohide", "Gladiator's Dragonhide", "Gladiator's Wildhide"},
+    Hunter   = {"Gladiator's Chain"},
+    Mage     = {"Gladiator's Silk"},
+    Priest   = {"Gladiator's Mooncloth", "Gladiator's Satin"},
+    Rogue    = {"Gladiator's Leather"},
+    Shaman   = {"Gladiator's Mail", "Gladiator's Linked", "Gladiator's Earthshaker"},
+    Warlock  = {"Gladiator's Dreadweave", "Gladiator's Felweave"},
 }
-local CLASS_SET_S2 = {
-    Warrior="Merciless Gladiator's Plate",   Paladin="Merciless Gladiator's Redemption",
-    Druid="Merciless Gladiator's Kodohide/Dragonhide", Hunter="Merciless Gladiator's Chain",
-    Mage="Merciless Gladiator's Silk",       Priest="Merciless Gladiator's Mooncloth/Satin",
-    Rogue="Merciless Gladiator's Leather",   Shaman="Merciless Gladiator's Mail/Linked",
-    Warlock="Merciless Gladiator's Dreadweave/Felweave",
+local CLASS_SETS_S2 = {
+    Warrior  = {"Merciless Gladiator's Plate"},
+    Paladin  = {"Merciless Gladiator's Redemption", "Merciless Gladiator's Vindication", "Merciless Gladiator's Aegis"},
+    Druid    = {"Merciless Gladiator's Kodohide", "Merciless Gladiator's Dragonhide", "Merciless Gladiator's Wildhide"},
+    Hunter   = {"Merciless Gladiator's Chain"},
+    Mage     = {"Merciless Gladiator's Silk"},
+    Priest   = {"Merciless Gladiator's Mooncloth", "Merciless Gladiator's Satin"},
+    Rogue    = {"Merciless Gladiator's Leather"},
+    Shaman   = {"Merciless Gladiator's Mail", "Merciless Gladiator's Linked", "Merciless Gladiator's Earthshaker"},
+    Warlock  = {"Merciless Gladiator's Dreadweave", "Merciless Gladiator's Felweave"},
+}
+
+-- Full item ID list per arena set variant name.
+-- 5 item IDs per set sourced from AtlasLootClassic/Data/ItemSet.lua (all verified).
+-- Items are NOT in slot order; slot is detected at runtime via GetItemInfo equipLoc.
+local ARMOR_SET_IDS = {
+    -- Season 1 (Gladiator's) ─────────────────────────────────────────────────
+    ["Gladiator's Plate"]        = {24545,24546,24544,24549,24547},  -- set 567 Warrior
+    ["Gladiator's Dreadweave"]   = {24553,24554,24552,24556,24555},  -- set 568 Warlock
+    ["Gladiator's Leather"]      = {25830,25832,25831,25834,25833},  -- set 577 Rogue
+    ["Gladiator's Earthshaker"]  = {25998,25999,25997,26000,26001},  -- set 578 Shaman Enh
+    ["Gladiator's Silk"]         = {25855,25854,25856,25857,25858},  -- set 579 Mage
+    ["Gladiator's Mail"]         = {27471,27473,27469,27470,27472},  -- set 580 Shaman Heal
+    ["Gladiator's Satin"]        = {27708,27710,27711,27707,27709},  -- set 581 Priest Shadow
+    ["Gladiator's Aegis"]        = {27704,27706,27702,27703,27705},  -- set 582 Paladin Prot
+    ["Gladiator's Vindication"]  = {27881,27883,27879,27880,27882},  -- set 583 Paladin Ret
+    ["Gladiator's Wildhide"]     = {28127,28129,28130,28126,28128},  -- set 584 Druid Feral
+    ["Gladiator's Dragonhide"]   = {28137,28139,28140,28136,28138},  -- set 585 Druid Balance
+    ["Gladiator's Chain"]        = {28331,28333,28334,28335,28332},  -- set 586 Hunter
+    ["Gladiator's Felweave"]     = {30187,30186,30200,30188,30201},  -- set 615 Warlock
+    ["Gladiator's Kodohide"]     = {31376,31378,31379,31375,31377},  -- set 685 Druid Heal
+    ["Gladiator's Linked"]       = {31400,31407,31396,31397,31406},  -- set 686 Shaman Ele
+    ["Gladiator's Mooncloth"]    = {31410,31412,31413,31409,31411},  -- set 687 Priest Heal
+    ["Gladiator's Redemption"]   = {31616,31619,31613,31614,31618},  -- set 690 Paladin Heal
+    -- Season 2 (Merciless Gladiator's) ────────────────────────────────────────
+    ["Merciless Gladiator's Aegis"]        = {31997,31996,31992,31993,31995},  -- set 700 Paladin Prot
+    ["Merciless Gladiator's Plate"]        = {30488,30490,30486,30487,30489},  -- set 701 Warrior
+    ["Merciless Gladiator's Dreadweave"]   = {31974,31976,31977,31973,31975},  -- set 702 Warlock
+    ["Merciless Gladiator's Earthshaker"]  = {32006,32008,32004,32005,32007},  -- set 703 Shaman Enh
+    ["Merciless Gladiator's Felweave"]     = {31980,31979,31982,31981,31983},  -- set 704 Warlock
+    ["Merciless Gladiator's Mooncloth"]    = {32016,32018,32019,32015,32017},  -- set 705 Priest Heal
+    ["Merciless Gladiator's Chain"]        = {31962,31964,31960,31961,31963},  -- set 706 Hunter
+    ["Merciless Gladiator's Satin"]        = {32035,32037,32038,32034,32036},  -- set 707 Priest Shadow
+    ["Merciless Gladiator's Redemption"]   = {32022,32024,32020,32021,32023},  -- set 708 Paladin Heal
+    ["Merciless Gladiator's Kodohide"]     = {31988,31990,31991,31987,31989},  -- set 709 Druid Heal
+    ["Merciless Gladiator's Silk"]         = {32048,32047,32050,32049,32051},  -- set 710 Mage
+    ["Merciless Gladiator's Wildhide"]     = {31968,31971,31972,31967,31969},  -- set 711 Druid Feral
+    ["Merciless Gladiator's Mail"]         = {32011,32013,32009,32010,32012},  -- set 712 Shaman Heal
+    ["Merciless Gladiator's Leather"]      = {31999,32001,32002,31998,32000},  -- set 713 Rogue
+    ["Merciless Gladiator's Vindication"]  = {32041,32043,32039,32040,32042},  -- set 714 Paladin Ret
+    ["Merciless Gladiator's Linked"]       = {32031,32033,32029,32030,32032},  -- set 715 Shaman Ele
+    ["Merciless Gladiator's Dragonhide"]   = {32057,32059,32060,32056,32058},  -- set 716 Druid Balance
 }
 
 -- Weapon slot keys each class can equip (used to filter arena weapon list)
@@ -629,7 +691,7 @@ local function MakeBGFrame(name, parent, w, h)
             tile = true, tileSize = 32, edgeSize = 32,
             insets = { left=11, right=12, top=12, bottom=11 },
         })
-        f:SetBackdropColor(0, 0, 0, 0.9)
+        f:SetBackdropColor(0, 0, 0, 1)
         f:SetBackdropBorderColor(1, 1, 1, 1)
     end
     -- Title bar highlight strip
@@ -833,9 +895,8 @@ minimapButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 -- FORWARD DECLARATIONS
 -- ============================================================
 local OpenBeanArena, OpenCommands, frame, cFrame, SetupPVPHook
-local arenaGearFrame, honorGearFrame, honorFrame, drFrame
-local infoFrame, charViewFrame
-local BeanArena_RefreshArenaGearPopup, BeanArena_RefreshHonorGearPopup
+local honorFrame, charViewFrame, refFrame
+local BeanArena_RefreshRefFrame, BeanArena_OpenRefFrame
 local BeanArena_RefreshHonorFrame
 local BeanArena_RefreshFrame, BeanArena_RefreshManual
 
@@ -1099,67 +1160,29 @@ end
 
 MakeLine(frame, Y.TLINE3, CW, LC)
 
--- ── Row 1: Arena Gear | Honor Gear ─────────────────────────
-local BTNW = math.floor((CW - 4) / 2)
+-- ── Row 1: Arena Gear | Weapons | Honor Gear ──────────────────────────
+local BTNW2 = math.floor((CW - 4) / 2)
 
-local arenaGearBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-arenaGearBtn:SetSize(BTNW, 20)
-arenaGearBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y.BTNS)
-arenaGearBtn:SetText("Arena Gear")
-arenaGearBtn:GetFontString():SetFontObject("GameFontNormalSmall")
-arenaGearBtn:SetScript("OnClick", function()
-    if arenaGearFrame:IsShown() then arenaGearFrame:Hide()
-    else arenaGearFrame:ClearAllPoints()
-        arenaGearFrame:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0); arenaGearFrame:Show() end
-end)
-
-local honorGearBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-honorGearBtn:SetSize(BTNW, 20)
-honorGearBtn:SetPoint("LEFT", arenaGearBtn, "RIGHT", 4, 0)
-honorGearBtn:SetText("Honor Gear")
-honorGearBtn:GetFontString():SetFontObject("GameFontNormalSmall")
-honorGearBtn:SetScript("OnClick", function()
-    if honorGearFrame:IsShown() then honorGearFrame:Hide()
-    else honorGearFrame:ClearAllPoints()
-        honorGearFrame:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0); honorGearFrame:Show() end
-end)
-
-
-
--- ── Row 2: CC/DR Table | Honor | Info ─────────────────────────
-local BTNW3 = math.floor((CW - 8) / 3)
-
-local drMainBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-drMainBtn:SetSize(BTNW3, 20)
-drMainBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y.BTNROW2)
-drMainBtn:SetText("CC/DR Table")
-drMainBtn:GetFontString():SetFontObject("GameFontNormalSmall")
-drMainBtn:SetScript("OnClick", function()
-    if drFrame:IsShown() then drFrame:Hide()
-    else drFrame:ClearAllPoints()
-        drFrame:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0); drFrame:Show() end
+local refMainBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+refMainBtn:SetSize(BTNW2, 20)
+refMainBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y.BTNS)
+refMainBtn:SetText("Reference")
+refMainBtn:GetFontString():SetFontObject("GameFontNormalSmall")
+refMainBtn:SetScript("OnClick", function()
+    if refFrame:IsShown() then refFrame:Hide()
+    else refFrame:ClearAllPoints()
+        refFrame:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0); refFrame:Show() end
 end)
 
 local honorMainBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-honorMainBtn:SetSize(BTNW3, 20)
-honorMainBtn:SetPoint("LEFT", drMainBtn, "RIGHT", 4, 0)
+honorMainBtn:SetSize(BTNW2, 20)
+honorMainBtn:SetPoint("LEFT", refMainBtn, "RIGHT", 4, 0)
 honorMainBtn:SetText("Honor")
 honorMainBtn:GetFontString():SetFontObject("GameFontNormalSmall")
 honorMainBtn:SetScript("OnClick", function()
     if honorFrame:IsShown() then honorFrame:Hide()
     else honorFrame:ClearAllPoints()
         honorFrame:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0); honorFrame:Show() end
-end)
-
-local infoMainBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-infoMainBtn:SetSize(BTNW3, 20)
-infoMainBtn:SetPoint("LEFT", honorMainBtn, "RIGHT", 4, 0)
-infoMainBtn:SetText("Info")
-infoMainBtn:GetFontString():SetFontObject("GameFontNormalSmall")
-infoMainBtn:SetScript("OnClick", function()
-    if infoFrame:IsShown() then infoFrame:Hide()
-    else infoFrame:ClearAllPoints()
-        infoFrame:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0); infoFrame:Show() end
 end)
 
 -- ── Character dropdown row (centered) ───────────────────────
@@ -1415,493 +1438,7 @@ do
     BeanArena_RefreshHonorFrame = RefreshHonorFrame
 end
 
--- ============================================================
--- POPUP: ARENA GEAR COSTS  (class + season aware, with item tooltips)
--- ============================================================
-do
-    local PW = 430
-    local PH = 560
-    arenaGearFrame = MakeBGFrame("BeanArenaArenaGearFrame", UIParent, PW, PH)
-    arenaGearFrame:SetFrameStrata("HIGH")
-    arenaGearFrame:SetMovable(true); arenaGearFrame:EnableMouse(true)
-    arenaGearFrame:RegisterForDrag("LeftButton")
-    arenaGearFrame:SetScript("OnDragStart", arenaGearFrame.StartMoving)
-    arenaGearFrame:SetScript("OnDragStop", function(s) s:StopMovingOrSizing() end)
-    arenaGearFrame:Hide()
-    RegisterEsc(arenaGearFrame)
 
-    local agTitle = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    agTitle:SetPoint("TOP", arenaGearFrame, "TOP", 0, -12)
-    agTitle:SetText("|cffFFD700Arena Gear|r")
-
-    local agClose = CreateFrame("Button", nil, arenaGearFrame, "UIPanelCloseButton")
-    agClose:SetPoint("TOPRIGHT", arenaGearFrame, "TOPRIGHT", -4, -4)
-    agClose:SetScript("OnClick", function() arenaGearFrame:Hide() end)
-
-    -- Season toggle buttons
-    local agSeason = 2
-    local agS1Btn = CreateFrame("Button", nil, arenaGearFrame, "UIPanelButtonTemplate")
-    agS1Btn:SetSize(70, 22); agS1Btn:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 12, -32)
-    agS1Btn:SetText("Season 1"); agS1Btn:GetFontString():SetFontObject("GameFontNormalSmall")
-    local agS2Btn = CreateFrame("Button", nil, arenaGearFrame, "UIPanelButtonTemplate")
-    agS2Btn:SetSize(70, 22); agS2Btn:SetPoint("LEFT", agS1Btn, "RIGHT", 4, 0)
-    agS2Btn:SetText("Season 2"); agS2Btn:GetFontString():SetFontObject("GameFontNormalSmall")
-
-    -- Class selector: visible button + hidden menu anchor
-    local agClassLbl = arenaGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    agClassLbl:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 156, -37)
-    agClassLbl:SetText("|cffAAAAAA Class:|r")
-    local agClassBtn = CreateFrame("Button", nil, arenaGearFrame, "UIPanelButtonTemplate")
-    agClassBtn:SetSize(148, 22)
-    agClassBtn:SetPoint("TOPLEFT", arenaGearFrame, "TOPLEFT", 196, -33)
-    agClassBtn:GetFontString():SetFontObject("GameFontNormalSmall")
-    -- hidden anchor for the MENU dropdown (parented to UIParent to avoid clipping)
-    local agClassDD = CreateFrame("Frame", "BeanArenaAgClassDD", UIParent, "UIDropDownMenuTemplate")
-
-    -- Scroll area
-    local agScr = CreateFrame("ScrollFrame", "BeanArenaAgScr", arenaGearFrame, "UIPanelScrollFrameTemplate")
-    agScr:SetPoint("TOPLEFT",     arenaGearFrame, "TOPLEFT",     10, -62)
-    agScr:SetPoint("BOTTOMRIGHT", arenaGearFrame, "BOTTOMRIGHT", -28, 10)
-    local agCnt = CreateFrame("Frame", nil, agScr)
-    agCnt:SetWidth(PW - 52)
-    agCnt:SetHeight(10)
-    agScr:SetScrollChild(agCnt)
-
-    local agClass = "Warrior"
-    local CW2 = PW - 52   -- matches agCnt:SetWidth(PW-52)
-    local ACOL = { slot=0, ap=CW2-140, rat=CW2-68 }
-
-    local function BuildArenaContent()
-        for _, ch in ipairs({agCnt:GetChildren()}) do ch:Hide() end
-        for _, r  in ipairs({agCnt:GetRegions()})  do r:Hide()  end
-
-        local weaponList = agSeason == 2 and S2_WEAPONS or S1_WEAPONS
-        local setNames   = agSeason == 2 and CLASS_SET_S2 or CLASS_SET_S1
-        local r2,r3,r5   = GetLiveRatings()
-        local bestRating = math.max(r2, r3, r5)
-        local curAP      = GetCurrentArenaPoints()
-        local cy = -2
-
-        local function AGLine()
-            local d = agCnt:CreateTexture(nil,"ARTWORK")
-            d:SetSize(CW2,1); d:SetPoint("TOPLEFT",agCnt,"TOPLEFT",0,cy-2)
-            d:SetColorTexture(0.3,0.3,0.3,0.5); cy=cy-8
-        end
-        local function AGHdr(txt)
-            local h = agCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
-            h:SetPoint("TOPLEFT",agCnt,"TOPLEFT",0,cy)
-            h:SetText("|cff00CCFF"..txt.."|r"); cy=cy-16
-        end
-        local function AGColHdr()
-            local function CH(x,t)
-                local f=agCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                f:SetPoint("TOPLEFT",agCnt,"TOPLEFT",x,cy)
-                f:SetText("|cffAAAAAA"..t.."|r")
-            end
-            CH(ACOL.slot,"Slot"); CH(ACOL.ap,"AP"); CH(ACOL.rat,"Rating")
-            cy=cy-14; AGLine()
-        end
-
-        -- ─── 5-piece armor set ───────────────────────────────────
-        -- (no WoW item IDs for class armor; tooltip shows cost info)
-        local setName = setNames[agClass] or (agClass.." Set")
-        AGHdr("Armor Set  |cffAAAAAA— "..setName.."|r")
-        AGColHdr()
-        local armorSlots = {
-            {slot="Gloves",    ap=agSeason==2 and 930  or 875,  rating=0   },
-            {slot="Helmet",    ap=agSeason==2 and 1550 or 1375, rating=0   },
-            {slot="Chest",     ap=agSeason==2 and 1550 or 1375, rating=0   },
-            {slot="Legs",      ap=agSeason==2 and 1550 or 1375, rating=0   },
-            {slot="Shoulders", ap=agSeason==2 and 1245 or 1125, rating=2000},
-        }
-        for _, row in ipairs(armorSlots) do
-            local rMet = row.rating==0 or bestRating>=row.rating
-            local aMet = curAP >= row.ap
-            local rCol = rMet and "00FF00" or "FF4444"
-            -- Button so OnEnter/OnLeave fire for the custom cost tooltip
-            local rowBtn = CreateFrame("Button", nil, agCnt)
-            rowBtn:SetSize(CW2, 15)
-            rowBtn:SetPoint("TOPLEFT", agCnt, "TOPLEFT", 0, cy)
-            rowBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
-            local function FS2(x,t)
-                local f=rowBtn:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                f:SetPoint("LEFT",rowBtn,"LEFT",x,0); f:SetText(t)
-            end
-            FS2(ACOL.slot, "|cffCCCCCC"..row.slot.."|r")
-            FS2(ACOL.ap,   (aMet and "|cffFFD700" or "|cffFF6666")..row.ap.."|r")
-            FS2(ACOL.rat,  row.rating>0 and ("|cff"..rCol..row.rating.."|r") or "|cff00FF00None|r")
-            local capRow,capSet,capAMet,capRMet = row,setName,aMet,rMet
-            rowBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:AddLine(capSet.." "..capRow.slot, 1, 0.82, 0)
-                GameTooltip:AddLine(" ")
-                GameTooltip:AddLine(string.format("|cff%s%d Arena Points|r",
-                    capAMet and "FFD700" or "FF6666", capRow.ap))
-                if capRow.rating > 0 then
-                    GameTooltip:AddLine(string.format("|cff%sRequires %d Rating|r",
-                        capRMet and "00FF00" or "FF4444", capRow.rating))
-                else
-                    GameTooltip:AddLine("|cff00FF00No Rating Requirement|r")
-                end
-                GameTooltip:Show()
-            end)
-            rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            cy=cy-15
-        end
-        cy=cy-8
-
-        -- ─── Weapons / Off-hands / Relics  (icon grid, all classes) ────
-        -- All weapons shown regardless of class; grey = can't afford or rating not met.
-        AGHdr("Weapons & Relics  |cffAAAAAA— all classes (hover for details)|r")
-        cy = cy - 4
-
-        local ICON    = 36          -- icon texture size
-        local IGAP    = 4           -- gap between icons
-        local CELL    = ICON + IGAP -- 40 px per cell
-        local PER_ROW = math.floor(CW2 / CELL)
-        local col  = 0
-        local rowY = cy
-
-        for _, wep in ipairs(weaponList) do
-            local cellX     = col * CELL
-            local canAfford = curAP >= wep.ap
-            local ratingMet = wep.rating == 0 or bestRating >= wep.rating
-
-            local iconBtn = CreateFrame("Button", nil, agCnt)
-            iconBtn:SetSize(ICON, ICON)
-            iconBtn:SetPoint("TOPLEFT", agCnt, "TOPLEFT", cellX, rowY)
-
-            -- Icon texture (first id of the entry)
-            local iconTex = iconBtn:CreateTexture(nil, "BACKGROUND")
-            iconTex:SetAllPoints()
-            local firstID = wep.ids and wep.ids[1]
-            if firstID then
-                local _,_,_,_,_,_,_,_,_,iconPath = GetItemInfo(firstID)
-                iconTex:SetTexture(iconPath or "Interface\\Icons\\INV_Misc_QuestionMark")
-            else
-                iconTex:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-            end
-            -- Desaturate items that can't be purchased yet
-            if not (canAfford and ratingMet) then
-                iconTex:SetDesaturated(true)
-                iconTex:SetVertexColor(0.55, 0.55, 0.55)
-            end
-
-            iconBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
-
-            -- Full tooltip on hover
-            local capW,capCA,capRM = wep,canAfford,ratingMet
-            iconBtn:SetScript("OnEnter", function(self)
-                local id = capW.ids and capW.ids[1]
-                if id then
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    GameTooltip:SetHyperlink("item:"..id)
-                    GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine(string.format("|cff%s%d Arena Points|r",
-                        capCA and "FFD700" or "FF6666", capW.ap))
-                    if capW.rating > 0 then
-                        GameTooltip:AddLine(string.format("|cff%sRequires %d Rating|r",
-                            capRM and "00FF00" or "FF4444", capW.rating))
-                    else
-                        GameTooltip:AddLine("|cff00FF00No Rating Requirement|r")
-                    end
-                    if #capW.ids > 1 then
-                        GameTooltip:AddLine(string.format("|cffAAAAAA+ %d style variant%s|r",
-                            #capW.ids-1, #capW.ids>2 and "s" or ""))
-                    end
-                    GameTooltip:Show()
-                end
-            end)
-            iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-            col = col + 1
-            if col >= PER_ROW then
-                col  = 0
-                rowY = rowY - CELL
-            end
-        end
-        -- Advance past the last (possibly partial) row
-        if col > 0 then rowY = rowY - CELL end
-        cy = rowY
-
-        agCnt:SetHeight(math.abs(cy) + 20)
-    end
-
-    agClassBtn:SetScript("OnClick", function(self)
-        UIDropDownMenu_Initialize(agClassDD, function()
-            for _, cls in ipairs(CLASS_LIST) do
-                local info = UIDropDownMenu_CreateInfo()
-                info.text = cls; info.value = cls
-                info.notCheckable = true
-                info.func = function()
-                    agClass = cls
-                    agClassBtn:SetText(cls .. "  v")
-                    BuildArenaContent()
-                    CloseDropDownMenus()
-                end
-                UIDropDownMenu_AddButton(info)
-            end
-        end, "MENU")
-        ToggleDropDownMenu(1, nil, agClassDD, self, 0, -4)
-    end)
-
-    agS1Btn:SetScript("OnClick", function() agSeason = 1; BuildArenaContent() end)
-    agS2Btn:SetScript("OnClick", function() agSeason = 2; BuildArenaContent() end)
-
-    arenaGearFrame:SetScript("OnShow", function()
-        local _, cf = UnitClass("player")
-        local cm = {WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
-                    PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
-        agClass = cm[cf or ""] or "Warrior"
-        agClassBtn:SetText(agClass .. "  v")
-        -- Pre-request item data for both seasons so icons are ready immediately
-        for _, wlist in ipairs({S1_WEAPONS, S2_WEAPONS}) do
-            for _, wep in ipairs(wlist) do
-                if wep.ids then for _, id in ipairs(wep.ids) do GetItemInfo(id) end end
-            end
-        end
-        BuildArenaContent()
-    end)
-
-    BeanArena_RefreshArenaGearPopup = function()
-        if arenaGearFrame:IsShown() then BuildArenaContent() end
-    end
-end
-
--- ============================================================
--- POPUP: HONOR GEAR COSTS  (class + season aware, with item tooltips)
--- ============================================================
-do
-    local PW = 480
-    local PH = 560
-    honorGearFrame = MakeBGFrame("BeanArenaHonorGearFrame", UIParent, PW, PH)
-    honorGearFrame:SetFrameStrata("HIGH")
-    honorGearFrame:SetMovable(true); honorGearFrame:EnableMouse(true)
-    honorGearFrame:RegisterForDrag("LeftButton")
-    honorGearFrame:SetScript("OnDragStart", honorGearFrame.StartMoving)
-    honorGearFrame:SetScript("OnDragStop", function(s) s:StopMovingOrSizing() end)
-    honorGearFrame:Hide()
-    RegisterEsc(honorGearFrame)
-
-    local hgTitle = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    hgTitle:SetPoint("TOP", honorGearFrame, "TOP", 0, -12)
-    hgTitle:SetText("|cffFFD700Honor Gear|r")
-
-    local hgClose = CreateFrame("Button", nil, honorGearFrame, "UIPanelCloseButton")
-    hgClose:SetPoint("TOPRIGHT", honorGearFrame, "TOPRIGHT", -4, -4)
-    hgClose:SetScript("OnClick", function() honorGearFrame:Hide() end)
-
-    -- Season toggle buttons
-    local hgSeason = 2
-    local hgS1Btn = CreateFrame("Button", nil, honorGearFrame, "UIPanelButtonTemplate")
-    hgS1Btn:SetSize(70, 22); hgS1Btn:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", 12, -32)
-    hgS1Btn:SetText("Season 1"); hgS1Btn:GetFontString():SetFontObject("GameFontNormalSmall")
-    local hgS2Btn = CreateFrame("Button", nil, honorGearFrame, "UIPanelButtonTemplate")
-    hgS2Btn:SetSize(70, 22); hgS2Btn:SetPoint("LEFT", hgS1Btn, "RIGHT", 4, 0)
-    hgS2Btn:SetText("Season 2"); hgS2Btn:GetFontString():SetFontObject("GameFontNormalSmall")
-
-    -- Class dropdown  (UIPanelButtonTemplate button + hidden menu anchor)
-    local hgClassLbl = honorGearFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    hgClassLbl:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", 162, -37)
-    hgClassLbl:SetText("|cffAAAAAA Class:|r")
-    local hgClassBtn = CreateFrame("Button", nil, honorGearFrame, "UIPanelButtonTemplate")
-    hgClassBtn:SetSize(148, 22)
-    hgClassBtn:SetPoint("TOPLEFT", honorGearFrame, "TOPLEFT", 207, -33)
-    -- Hidden anchor for the dropdown menu — parented to UIParent so it renders above everything
-    local hgClassDD = CreateFrame("Frame", "BeanArenaHgClassDD", UIParent, "UIDropDownMenuTemplate")
-    hgClassDD:Hide()
-
-    -- Scroll area
-    local hgScr = CreateFrame("ScrollFrame", "BeanArenaHgScr", honorGearFrame, "UIPanelScrollFrameTemplate")
-    hgScr:SetPoint("TOPLEFT",     honorGearFrame, "TOPLEFT",     10, -62)
-    hgScr:SetPoint("BOTTOMRIGHT", honorGearFrame, "BOTTOMRIGHT", -28, 10)
-    local hgCnt = CreateFrame("Frame", nil, hgScr)
-    hgCnt:SetWidth(PW - 52)
-    hgCnt:SetHeight(10)
-    hgScr:SetScrollChild(hgCnt)
-
-    local hgClass = "Warrior"
-    local HCW  = PW - 52   -- matches hgCnt:SetWidth(PW-52)
-    local HICON = 20        -- px reserved for the item icon on each row
-    local HCOL = { name=HICON+2, honor=HCW-195, marks=HCW-130, have=HCW-48 }
-
-    local function BuildHonorContent()
-        for _, ch in ipairs({hgCnt:GetChildren()}) do ch:Hide() end
-        for _, r  in ipairs({hgCnt:GetRegions()})  do r:Hide()  end
-
-        local armorType  = CLASS_ARMOR_TYPE[hgClass] or "Cloth"
-        local universal  = hgSeason == 2 and S2_HONOR_UNIVERSAL or S1_HONOR_UNIVERSAL
-        local byArmor    = hgSeason == 2 and S2_HONOR_BYARMOR   or S1_HONOR_BYARMOR
-        local armorRows  = byArmor[armorType] or {}
-        local honor      = GetCurrentHonor()
-        local marks      = GetPvPMarkCounts()
-        local fmt        = BreakUpLargeNumbers or tostring
-        local cy         = -2
-
-        local function HLine()
-            local d=hgCnt:CreateTexture(nil,"ARTWORK")
-            d:SetSize(HCW,1); d:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",0,cy-2)
-            d:SetColorTexture(0.3,0.3,0.3,0.5); cy=cy-8
-        end
-        local function HGHdr(txt)
-            local h=hgCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
-            h:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",0,cy)
-            h:SetText("|cff00CCFF"..txt.."|r"); cy=cy-16
-        end
-        local function ColHdrs()
-            local function CH(x,t)
-                local f=hgCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                f:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",x,cy)
-                f:SetText("|cffAAAAAA"..t.."|r")
-            end
-            CH(HCOL.name,"Item"); CH(HCOL.honor,"Honor"); CH(HCOL.marks,"Marks"); CH(HCOL.have,"You Have")
-            cy=cy-14; HLine()
-        end
-
-        -- Helper: build one item row (hoverable for tooltip)
-        local function ItemRow(item, slotData)
-            local honorMet = honor >= slotData.honor
-            local hCol = honorMet and "00FF00" or "FF4444"
-            -- Marks check
-            local allMet = true
-            local mparts = {}
-            for bg, req in pairs(slotData.marks) do
-                local have = marks[bg] or 0
-                if have < req then allMet = false end
-                local mc = have >= req and "00FF00" or "FF4444"
-                mparts[#mparts+1] = string.format("|cff%s%d|r|cffAAAAAA/%d %s|r", mc, have, req, bg)
-            end
-            if #mparts == 0 then mparts[#mparts+1] = "|cff00FF00—|r" end
-
-            local rowBtn = CreateFrame("Button", nil, hgCnt)
-            rowBtn:SetSize(HCW, HICON)
-            rowBtn:SetPoint("TOPLEFT", hgCnt, "TOPLEFT", 0, cy)
-            rowBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
-
-            -- Item icon (left side of the row)
-            local iconTex = rowBtn:CreateTexture(nil, "BACKGROUND")
-            iconTex:SetSize(HICON, HICON)
-            iconTex:SetPoint("LEFT", rowBtn, "LEFT", 0, 0)
-            local _,_,_,_,_,_,_,_,_,iconPath = GetItemInfo(item.id)
-            iconTex:SetTexture(iconPath or "Interface\\Icons\\INV_Misc_QuestionMark")
-            if not (honorMet and allMet) then
-                iconTex:SetDesaturated(true)
-                iconTex:SetVertexColor(0.55, 0.55, 0.55)
-            end
-
-            local function BFS(x, t)
-                local f = rowBtn:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                f:SetPoint("LEFT",rowBtn,"LEFT",x,0); f:SetText(t)
-            end
-            -- Item name
-            local dispName = item.name or ("item:"..item.id)
-            local cached = GetItemInfo(item.id)
-            if cached then dispName = cached end
-            BFS(HCOL.name,  "|cffCCCCCC"..dispName.."|r")
-            BFS(HCOL.honor, string.format("|cff%s%s|r", hCol, fmt(slotData.honor)))
-            BFS(HCOL.marks, table.concat(mparts,"  "))
-            BFS(HCOL.have,  (honorMet and allMet) and "|cff00FF00Ready!|r" or "|cffAAAAAA...|r")
-
-            -- Tooltip on hover
-            local capturedID = item.id
-            rowBtn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetHyperlink("item:"..capturedID)
-                GameTooltip:Show()
-            end)
-            rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-            cy = cy - (HICON + 2)
-        end
-
-        -- ─── Neck & Ring (universal) ─────────────────────────────
-        HGHdr("Neck & Ring  |cffAAAAAA— all classes|r")
-        ColHdrs()
-        for _, slotData in ipairs(universal) do
-            local prev_cy = cy
-            for _, item in ipairs(slotData.items) do
-                ItemRow(item, slotData)
-            end
-            -- slot label on left of first item
-            if cy ~= prev_cy then cy = cy - 4 end
-        end
-        cy = cy - 4
-
-        -- ─── Bracers / Belt / Boots (armor-type specific) ─────────
-        HGHdr("Off-pieces  |cffAAAAAA— "..armorType.." ("..hgClass..")|r")
-        ColHdrs()
-        if #armorRows == 0 then
-            local nf=hgCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-            nf:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",0,cy)
-            nf:SetText("|cff666666No data for "..armorType.."|r"); cy=cy-15
-        else
-            for _, slotData in ipairs(armorRows) do
-                -- Slot label
-                local slbl=hgCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
-                slbl:SetPoint("TOPLEFT",hgCnt,"TOPLEFT",0,cy)
-                slbl:SetText("|cff888888— "..slotData.slot.." —|r"); cy=cy-14
-                for _, item in ipairs(slotData.items) do
-                    ItemRow(item, slotData)
-                end
-                cy = cy - 4
-            end
-        end
-
-        hgCnt:SetHeight(math.abs(cy)+20)
-    end
-
-    -- Class button click: open dropdown anchored to the button
-    hgClassBtn:SetScript("OnClick", function(self)
-        UIDropDownMenu_Initialize(hgClassDD, function()
-            for _, cls in ipairs(CLASS_LIST) do
-                local info = UIDropDownMenu_CreateInfo()
-                info.text = cls; info.value = cls
-                info.notCheckable = false
-                info.checked = (hgClass == cls)
-                info.func = function()
-                    hgClass = cls
-                    hgClassBtn:SetText(cls .. "  v")
-                    BuildHonorContent()
-                    CloseDropDownMenus()
-                end
-                UIDropDownMenu_AddButton(info)
-            end
-        end, "MENU")
-        ToggleDropDownMenu(1, nil, hgClassDD, self, 0, -4)
-    end)
-
-    hgS1Btn:SetScript("OnClick", function()
-        hgSeason = 1; BuildHonorContent()
-    end)
-    hgS2Btn:SetScript("OnClick", function()
-        hgSeason = 2; BuildHonorContent()
-    end)
-
-    honorGearFrame:SetScript("OnShow", function()
-        local _, cf = UnitClass("player")
-        local cm = {WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
-                    PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
-        hgClass = cm[cf or ""] or "Warrior"
-        hgClassBtn:SetText(hgClass .. "  v")
-        -- Pre-request item data so icons are ready immediately
-        for _, list in ipairs({S1_HONOR_UNIVERSAL, S2_HONOR_UNIVERSAL}) do
-            for _, slot in ipairs(list) do
-                for _, item in ipairs(slot.items) do GetItemInfo(item.id) end
-            end
-        end
-        for _, byArmor in ipairs({S1_HONOR_BYARMOR, S2_HONOR_BYARMOR}) do
-            for _, armorList in pairs(byArmor) do
-                for _, slot in ipairs(armorList) do
-                    for _, item in ipairs(slot.items) do GetItemInfo(item.id) end
-                end
-            end
-        end
-        BuildHonorContent()
-    end)
-
-    BeanArena_RefreshHonorGearPopup = function()
-        if honorGearFrame:IsShown() then BuildHonorContent() end
-    end
-end
 
 
 -- ============================================================
@@ -1975,79 +1512,7 @@ OpenCommands = function()
     cFrame:Show()
 end
 
--- ============================================================
--- INFO FRAME  (addon usage guide)
--- ============================================================
-do
-    local IW, IH = 420, 560
-    infoFrame = MakeBGFrame("BeanArenaInfoFrame", UIParent, IW, IH)
-    infoFrame:SetFrameStrata("HIGH")
-    infoFrame:SetMovable(true); infoFrame:EnableMouse(true)
-    infoFrame:RegisterForDrag("LeftButton")
-    infoFrame:SetScript("OnDragStart", infoFrame.StartMoving)
-    infoFrame:SetScript("OnDragStop", function(s) s:StopMovingOrSizing() end)
-    infoFrame:Hide(); RegisterEsc(infoFrame)
 
-    local iClose = CreateFrame("Button", nil, infoFrame, "UIPanelCloseButton")
-    iClose:SetPoint("TOPRIGHT", infoFrame, "TOPRIGHT", -4, -4)
-    iClose:SetScript("OnClick", function() infoFrame:Hide() end)
-
-    local iTitle = infoFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    iTitle:SetPoint("TOP", infoFrame, "TOP", 0, -12)
-    iTitle:SetText("|cffFFD700BeanArena|r  |cff888888v0.3.3|r")
-
-    MakeLine(infoFrame, -30, IW - 32, 14)
-
-    -- Scroll area for info text
-    local iScr = CreateFrame("ScrollFrame", "BeanArenaInfoScr", infoFrame, "UIPanelScrollFrameTemplate")
-    iScr:SetPoint("TOPLEFT",     infoFrame, "TOPLEFT",     10, -38)
-    iScr:SetPoint("BOTTOMRIGHT", infoFrame, "BOTTOMRIGHT", -28, 10)
-    local iCnt = CreateFrame("Frame", nil, iScr)
-    iCnt:SetWidth(IW - 52)
-    iScr:SetScrollChild(iCnt)
-
-    local INFO_SECTIONS = {
-        { hdr="Overview", body=
-            "BeanArena is a PvP utility addon for WoW TBC Anniversary. It tracks your arena ratings, arena point projections, honor, and battleground marks — and helps you plan gear purchases, build comp strategies, and understand CC/DR rules, all without leaving the game." },
-        { hdr="Main Window  ( /ba )", body=
-            "Shows your live 2v2 / 3v3 / 5v5 ratings, games played, and projected AP reward for the week. The Arena Point Calculator lets you type in any rating to simulate AP earnings. Banked AP is shown so you can track progress toward your next item." },
-        { hdr="Honor Window  ( /ba honor )", body=
-            "Displays your current honor, progress toward the 75,000 cap, weekly honor plan, BG mark inventory, and a full S1 honor gear checklist with checkboxes to track what you still need." },
-        { hdr="CC/DR Table  ( /ba cc )", body=
-            "Reference table for all Diminishing Return categories in TBC. Shows every spell per category, which share DR with which, and TBC-specific rules (e.g. Cyclone only DRs with itself; Silence does NOT DR in TBC; DR resets 15-20s after the effect ends)." },
-        { hdr="Gear Windows  ( /ba gear  |  /ba hgear )", body=
-            "Arena Gear: Full S1 arena gear list with AP and rating requirements.\nHonor Gear: Full S1 honor gear list with honor costs per slot." },
-        { hdr="Character Viewer  ( /ba chars )", body=
-            "View comp notes and arena/honor data for your other characters on the same account. Any character that has logged in with BeanArena installed will appear here. Useful for checking your alt's notes or comparing progress." },
-        { hdr="Slash Commands", body=
-            "/ba calc [#]       AP for all brackets\n/ba honor [slot]   Honor gear cost+progress\n/ba arena [slot]   Arena gear cost+progress\n/ba dr [class]     CC & DR for a class\n/ba slots          List gear slot names\n/ba points         Live rating breakdown\n/ba marks          BG mark counts\n/ba reset          Time until reset\n/ba help           All commands" },
-        { hdr="Tips", body=
-            "• BeanArena opens alongside the PvP panel (H key) automatically.\n• Minimap: left-click = main window, middle-click = commands, right-click = options.\n• /ba calc 1750 checks AP for any rating.  /ba dr mage lists Mage DR spells.\n• /ba slots shows all gear slot names for use with /ba arena and /ba honor.\n• Frame position is saved between sessions." },
-    }
-
-    local cy = -8
-    local PAD_L = 4
-    for _, sec in ipairs(INFO_SECTIONS) do
-        local hdrFS = iCnt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        hdrFS:SetPoint("TOPLEFT", iCnt, "TOPLEFT", PAD_L, cy)
-        hdrFS:SetText("|cffFFD700" .. sec.hdr .. "|r")
-        cy = cy - 18
-
-        -- Body — wrap manually by splitting on \n and letting FontString wrap per line
-        for line in (sec.body .. "\n"):gmatch("([^\n]*)\n") do
-            local bodyFS = iCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            bodyFS:SetPoint("TOPLEFT", iCnt, "TOPLEFT", PAD_L + 6, cy)
-            bodyFS:SetWidth(iCnt:GetWidth() - PAD_L - 10)
-            bodyFS:SetJustifyH("LEFT")
-            bodyFS:SetText("|cffCCCCCC" .. line .. "|r")
-            -- Estimate height: ~14px per wrapped line; ~16 chars per 100px width at small font
-            local wrapEst = math.max(1, math.ceil(#line / 55))
-            cy = cy - (14 * wrapEst)
-        end
-        cy = cy - 10  -- section gap
-    end
-    iCnt:SetHeight(math.abs(cy) + 20)
-end
 
 -- ============================================================
 -- CHARACTER VIEWER FRAME  ( /ba chars )
@@ -2229,8 +1694,7 @@ local function RefreshLive()
 end
 
 local function RefreshMisc()
-    if arenaGearFrame:IsShown()  then BeanArena_RefreshArenaGearPopup() end
-    if honorGearFrame:IsShown()  then BeanArena_RefreshHonorGearPopup() end
+    if refFrame:IsShown()   then BeanArena_RefreshRefFrame()    end
     if honorFrame:IsShown() and BeanArena_RefreshHonorFrame then
         BeanArena_RefreshHonorFrame()
     end
@@ -2356,96 +1820,609 @@ local function BuildDRCrossRef()
 end
 
 -- ============================================================
--- POPUP: CC / DR TABLE  (condensed, scrollable)
+-- POPUP: UNIFIED REFERENCE FRAME
+-- Arena Gear / Weapons / Honor Gear / CC/DR Table / Info
 -- ============================================================
 do
-    local PW = 560
-    local PH = 540
+    local RF_W = 500
+    local RF_H = 560
+    local RCW  = RF_W - 52   -- 448 px content width
 
-    drFrame = MakeBGFrame("BeanArenaDRFrame", UIParent, PW, PH)
-    drFrame:SetFrameStrata("HIGH")
-    drFrame:SetMovable(true); drFrame:EnableMouse(true)
-    drFrame:RegisterForDrag("LeftButton")
-    drFrame:SetScript("OnDragStart", drFrame.StartMoving)
-    drFrame:SetScript("OnDragStop", function(s) s:StopMovingOrSizing() end)
-    drFrame:Hide(); RegisterEsc(drFrame)
+    refFrame = MakeBGFrame("BeanArenaRefFrame", UIParent, RF_W, RF_H)
+    refFrame:SetFrameStrata("HIGH")
+    refFrame:SetMovable(true); refFrame:EnableMouse(true)
+    refFrame:RegisterForDrag("LeftButton")
+    refFrame:SetScript("OnDragStart", refFrame.StartMoving)
+    refFrame:SetScript("OnDragStop", function(s) s:StopMovingOrSizing() end)
+    refFrame:Hide(); RegisterEsc(refFrame)
 
-    local dt = drFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    dt:SetPoint("TOP", drFrame, "TOP", 0, -12)
-    dt:SetText("|cffFFD700Arena CC & Diminishing Returns|r")
+    local rfTitleFS = refFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    rfTitleFS:SetPoint("TOP", refFrame, "TOP", 0, -12)
+    rfTitleFS:SetText("|cffFFD700Reference|r")
 
-    local dc = CreateFrame("Button", nil, drFrame, "UIPanelCloseButton")
-    dc:SetPoint("TOPRIGHT", drFrame, "TOPRIGHT", -4, -4)
-    dc:SetScript("OnClick", function() drFrame:Hide() end)
+    local rfClose = CreateFrame("Button", nil, refFrame, "UIPanelCloseButton")
+    rfClose:SetPoint("TOPRIGHT", refFrame, "TOPRIGHT", -4, -4)
+    rfClose:SetScript("OnClick", function() refFrame:Hide() end)
 
-    local dsub = drFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    dsub:SetPoint("TOP", drFrame, "TOP", 0, -28)
-    dsub:SetText("|cffAAAAAATBC  •  Silences: NO DR  •  Reset: 15-20s after effect ends|r")
-    MakeLine(drFrame, -40, PW - 32, 16)
+    -- Section selector (dropdown button + hidden anchor)
+    local rfSection = "Arena Gear"
+    local RF_SECTIONS = {"Arena Gear", "Weapons", "Honor Gear", "CC/DR Table", "Info"}
+    local rfSectBtn = CreateFrame("Button", nil, refFrame, "UIPanelButtonTemplate")
+    rfSectBtn:SetSize(158, 22)
+    rfSectBtn:SetPoint("TOPLEFT", refFrame, "TOPLEFT", 12, -32)
+    rfSectBtn:GetFontString():SetFontObject("GameFontNormalSmall")
+    rfSectBtn:SetText("Arena Gear  v")
+    local rfSectDD = CreateFrame("Frame", "BeanArenaRfSectDD", UIParent, "UIDropDownMenuTemplate")
 
-    local scrollFrame = CreateFrame("ScrollFrame", "BeanArenaDRScroll", drFrame, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT",     drFrame, "TOPLEFT",     16, -50)
-    scrollFrame:SetPoint("BOTTOMRIGHT", drFrame, "BOTTOMRIGHT", -28, 12)
+    -- Season toggle (hidden for CC/DR Table and Info)
+    local rfSeason = 2
+    local rfS1Btn = CreateFrame("Button", nil, refFrame, "UIPanelButtonTemplate")
+    rfS1Btn:SetSize(48, 22)
+    rfS1Btn:SetPoint("LEFT", rfSectBtn, "RIGHT", 6, 0)
+    rfS1Btn:SetText("S1"); rfS1Btn:GetFontString():SetFontObject("GameFontNormalSmall")
+    local rfS2Btn = CreateFrame("Button", nil, refFrame, "UIPanelButtonTemplate")
+    rfS2Btn:SetSize(48, 22)
+    rfS2Btn:SetPoint("LEFT", rfS1Btn, "RIGHT", 4, 0)
+    rfS2Btn:SetText("S2"); rfS2Btn:GetFontString():SetFontObject("GameFontNormalSmall")
 
-    local content = CreateFrame("Frame", nil, scrollFrame)
-    content:SetSize(PW - 48, 2000)
-    scrollFrame:SetScrollChild(content)
+    -- Class dropdown (visible for Arena Gear only)
+    local rfClass = "Warrior"
+    local rfClassBtn = CreateFrame("Button", nil, refFrame, "UIPanelButtonTemplate")
+    rfClassBtn:SetSize(138, 22)
+    rfClassBtn:SetPoint("LEFT", rfS2Btn, "RIGHT", 6, 0)
+    rfClassBtn:GetFontString():SetFontObject("GameFontNormalSmall")
+    rfClassBtn:SetText("Warrior  v")
+    local rfClassDD = CreateFrame("Frame", "BeanArenaRfClassDD", UIParent, "UIDropDownMenuTemplate")
 
-    local crossRef = BuildDRCrossRef()
-    local catColor = {}
-    for _, cat in ipairs(DR_CATEGORIES) do catColor[cat.id] = cat.color end
+    -- Scroll area
+    local rfScr = CreateFrame("ScrollFrame", "BeanArenaRfScr", refFrame, "UIPanelScrollFrameTemplate")
+    rfScr:SetPoint("TOPLEFT",     refFrame, "TOPLEFT",     10, -62)
+    rfScr:SetPoint("BOTTOMRIGHT", refFrame, "BOTTOMRIGHT", -28, 10)
+    local rfCnt = CreateFrame("Frame", nil, rfScr)
+    rfCnt:SetWidth(RCW)
+    rfCnt:SetHeight(10)
+    rfScr:SetScrollChild(rfCnt)
 
-    local cy = -4
-    for _, cat in ipairs(DR_CATEGORIES) do
-        local entries = crossRef[cat.id]
-        -- Category header row
-        local hdr = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        hdr:SetPoint("TOPLEFT", content, "TOPLEFT", 2, cy)
-        hdr:SetText(string.format("|cff%s%s|r  |cffAAAAAA— %s|r", cat.color, cat.name, cat.desc))
-        cy = cy - 15
-        local div = content:CreateTexture(nil, "ARTWORK")
-        div:SetSize(PW - 56, 1); div:SetPoint("TOPLEFT", content, "TOPLEFT", 2, cy)
-        div:SetColorTexture(0.3, 0.3, 0.3, 0.5)
-        cy = cy - 5
-        if not entries or #entries == 0 then
-            local ne = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-            ne:SetPoint("TOPLEFT", content, "TOPLEFT", 10, cy)
-            ne:SetText("|cff555555(none)|r"); cy = cy - 14
-        else
-            for _, e in ipairs(entries) do
-                local ln = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                ln:SetPoint("TOPLEFT", content, "TOPLEFT", 10, cy)
-                ln:SetText(string.format("|cffFFD700%-10s|r  |cffFFFFFF%-22s|r  |cffAAAAAA%s|r",
-                    e.class, e.spell, e.dur))
-                cy = cy - 14
+    local function ClearContent()
+        for _, ch in ipairs({rfCnt:GetChildren()}) do ch:Hide() end
+        for _, r  in ipairs({rfCnt:GetRegions()})  do r:Hide()  end
+    end
+
+    local SwitchSection  -- forward decl
+
+    -- ================================================================
+    -- ARENA GEAR
+    -- ================================================================
+    local SL_W    = 68
+    local IC_SZ   = 40
+    local IC_CELL = 44
+    local SLOT_DEFS = {
+        {slot="Head",      apS1=1375, apS2=1550, rating=0   },
+        {slot="Chest",     apS1=1375, apS2=1550, rating=0   },
+        {slot="Legs",      apS1=1375, apS2=1550, rating=0   },
+        {slot="Gloves",    apS1=875,  apS2=930,  rating=0   },
+        {slot="Shoulders", apS1=1125, apS2=1245, rating=2000},
+    }
+    local EQUIP_TO_SLOT = {
+        INVTYPE_HEAD     = "Head",
+        INVTYPE_SHOULDER = "Shoulders",
+        INVTYPE_CHEST    = "Chest",
+        INVTYPE_ROBE     = "Chest",
+        INVTYPE_LEGS     = "Legs",
+        INVTYPE_HAND     = "Gloves",
+    }
+
+    local function BuildArenaContent()
+        ClearContent()
+        local setList    = rfSeason == 2 and CLASS_SETS_S2 or CLASS_SETS_S1
+        local r2,r3,r5   = GetLiveRatings()
+        local bestRating = math.max(r2, r3, r5)
+        local curAP      = GetCurrentArenaPoints()
+        local cy = -2
+
+        local function AGLine()
+            local d = rfCnt:CreateTexture(nil,"ARTWORK")
+            d:SetSize(RCW,1); d:SetPoint("TOPLEFT",rfCnt,"TOPLEFT",0,cy-2)
+            d:SetColorTexture(0.3,0.3,0.3,0.5); cy=cy-8
+        end
+        local function AGHdr(txt)
+            local h = rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
+            h:SetPoint("TOPLEFT",rfCnt,"TOPLEFT",0,cy)
+            h:SetText("|cff00CCFF"..txt.."|r"); cy=cy-16
+        end
+
+        local variants = setList[rfClass] or {rfClass.." Set"}
+        local nV = #variants
+        AGHdr(string.format("Armor Set  |cffAAAAAA— %s  (%d variant%s)|r",
+            rfClass, nV, nV > 1 and "s" or ""))
+        if nV > 1 then
+            local vLine = ""
+            for vi, varName in ipairs(variants) do
+                local tail = varName:match("(%S+)$") or varName
+                vLine = vLine .. (vi > 1 and "  |  " or "") .. vi .. ":" .. tail
+            end
+            local vLbl = rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+            vLbl:SetPoint("TOPLEFT", rfCnt,"TOPLEFT", 0, cy)
+            vLbl:SetWidth(RCW)
+            vLbl:SetText("|cff888888Cols: " .. vLine .. "|r")
+            cy = cy - 14
+        end
+        AGLine(); cy = cy - 4
+
+        local slotGrid = {}
+        for vi, varName in ipairs(variants) do
+            slotGrid[vi] = {}
+            for _, id in ipairs(ARMOR_SET_IDS[varName] or {}) do
+                local _, _, _, _, _, _, _, _, equipLoc = GetItemInfo(id)
+                if equipLoc and equipLoc ~= "" then
+                    local sn = EQUIP_TO_SLOT[equipLoc]
+                    if sn then slotGrid[vi][sn] = id end
+                end
             end
         end
-        cy = cy - 6
+
+        for _, def in ipairs(SLOT_DEFS) do
+            local slotName = def.slot
+            local sLbl = rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+            sLbl:SetPoint("TOPLEFT", rfCnt,"TOPLEFT", 0, cy - 13)
+            sLbl:SetText("|cffAAAAAA"..slotName.."|r")
+            for vi = 1, nV do
+                local itemID  = slotGrid[vi] and slotGrid[vi][slotName]
+                local iconPath
+                if itemID then
+                    local _, _, _, _, _, _, _, _, _, tex = GetItemInfo(itemID)
+                    iconPath = tex
+                end
+                local iconBtn = CreateFrame("Button", nil, rfCnt)
+                iconBtn:SetSize(IC_SZ, IC_SZ)
+                iconBtn:SetPoint("TOPLEFT", rfCnt,"TOPLEFT", SL_W + (vi-1)*IC_CELL, cy)
+                local bg = iconBtn:CreateTexture(nil,"BACKGROUND")
+                bg:SetAllPoints(); bg:SetColorTexture(0.10, 0.10, 0.12, 1)
+                local iconTex = iconBtn:CreateTexture(nil,"ARTWORK")
+                iconTex:SetAllPoints()
+                iconTex:SetTexture(iconPath or "Interface\Icons\INV_Misc_QuestionMark")
+                iconBtn:SetHighlightTexture("Interface\Buttons\ButtonHilight-Square")
+                if itemID then
+                    local capID = itemID
+                    iconBtn:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetHyperlink("item:"..capID)
+                        GameTooltip:Show()
+                    end)
+                    iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                end
+            end
+            cy = cy - (IC_SZ + 4)
+        end
+
+        cy = cy - 4; AGLine(); cy = cy - 4
+        local costHdr = rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+        costHdr:SetPoint("TOPLEFT", rfCnt,"TOPLEFT", 0, cy)
+        costHdr:SetText("|cff888888Costs (S"..rfSeason.."):|r")
+        cy = cy - 15
+        for _, def in ipairs(SLOT_DEFS) do
+            local ap     = rfSeason == 2 and def.apS2 or def.apS1
+            local rating = def.rating
+            local rMet   = rating == 0 or bestRating >= rating
+            local aMet   = curAP >= ap
+            local allMet = aMet and rMet
+            local cLbl = rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+            cLbl:SetPoint("TOPLEFT", rfCnt,"TOPLEFT", 0, cy)
+            cLbl:SetText("|cffAAAAAA"..def.slot.."|r")
+            local apLbl = rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+            apLbl:SetPoint("TOPLEFT", rfCnt,"TOPLEFT", 82, cy)
+            apLbl:SetText(string.format("|cff%s%d AP|r", aMet and "FFD700" or "FF6666", ap))
+            if rating > 0 then
+                local rLbl = rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                rLbl:SetPoint("TOPLEFT", rfCnt,"TOPLEFT", 155, cy)
+                rLbl:SetText(string.format("|cff%s%d rating|r",
+                    rMet and "00FF00" or "FF4444", rating))
+            end
+            local tick = rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+            tick:SetPoint("TOPRIGHT", rfCnt,"TOPRIGHT", 0, cy)
+            tick:SetText(allMet and "|cff00FF00[OK]|r" or
+                         (not aMet and "|cffFF4444[NO]|r" or "|cffFFAA00[!]|r"))
+            cy = cy - 16
+        end
+        rfCnt:SetHeight(math.abs(cy) + 20)
     end
 
-    -- TBC notes footer
-    local noteDiv = content:CreateTexture(nil, "ARTWORK")
-    noteDiv:SetSize(PW - 56, 1); noteDiv:SetPoint("TOPLEFT", content, "TOPLEFT", 2, cy - 4)
-    noteDiv:SetColorTexture(0.4, 0.35, 0.25, 0.6); cy = cy - 14
-
-    local noteHdr = content:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    noteHdr:SetPoint("TOPLEFT", content, "TOPLEFT", 2, cy)
-    noteHdr:SetText("|cff00CCFFTBC-Specific Rules|r"); cy = cy - 15
-
-    local tbcNotes = {
-        "|cffFFFFFFBlind|r  |cffAAAAAAshares Fear DR (not Cyclone) — changed post-TBC|r",
-        "|cffFFFFFFCyclone|r  |cffAAAAAADRs with itself only in TBC|r",
-        "|cffFFFFFFKidney Shot|r  |cffAAAAAAown stun DR, separate from Cheap Shot|r",
-        "|cffFFFFFFSilences|r  |cffFF4444ZERO DR in TBC|r|cffAAAAAA — chain Garrote+Silence+Spell Lock freely|r",
-        "|cffFFFFFFDeath Coil|r  |cffAAAAAAHorror category, NOT Fear|r",
-        "|cffFFFFFFProc Stuns|r  |cffAAAAAA(Mace Spec) separate DR from activated stuns|r",
+    -- ================================================================
+    -- WEAPONS
+    -- ================================================================
+    local WICON    = 36
+    local WCELL_W  = WICON + 4
+    local WPER_ROW = math.floor(RCW / (WICON + 4))
+    local WEAPON_GROUPS = {
+        { label="1H Weapons",          keys={"1H-Dagger","1H-Sword","1H-Mace","1H-Axe","1H-Fist","1H-SwordCaster","1H-MaceHeal"} },
+        { label="2H Weapons",          keys={"2H-Sword","2H-Axe","2H-Mace","2H-Polearm","2H-Staff","2H-StaffFeral"} },
+        { label="Ranged & Wands",      keys={"Crossbow","Thrown","Wand"} },
+        { label="Shields & Off-hands", keys={"Shield","Off-Tome","Off-Orb"} },
+        { label="Relics",              keys={"Idol","Libram","Totem"} },
     }
-    for _, note in ipairs(tbcNotes) do
-        local nFS = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        nFS:SetPoint("TOPLEFT", content, "TOPLEFT", 10, cy)
-        nFS:SetText(note); cy = cy - 14
+
+    local function BuildWeaponsContent()
+        ClearContent()
+        local weaponList = rfSeason == 2 and S2_WEAPONS or S1_WEAPONS
+        local r2,r3,r5   = GetLiveRatings()
+        local bestRating = math.max(r2, r3, r5)
+        local curAP      = GetCurrentArenaPoints()
+        local cy = -2
+        local function WHdr(txt)
+            local h = rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
+            h:SetPoint("TOPLEFT",rfCnt,"TOPLEFT",0,cy)
+            h:SetText("|cff00CCFF"..txt.."|r"); cy=cy-18
+        end
+        local function WLine()
+            local d = rfCnt:CreateTexture(nil,"ARTWORK")
+            d:SetSize(RCW,1); d:SetPoint("TOPLEFT",rfCnt,"TOPLEFT",0,cy-2)
+            d:SetColorTexture(0.3,0.3,0.3,0.5); cy=cy-7
+        end
+        local byKey = {}
+        for _, wep in ipairs(weaponList) do
+            if not byKey[wep.key] then byKey[wep.key] = {} end
+            byKey[wep.key][#byKey[wep.key]+1] = wep
+        end
+        for _, grp in ipairs(WEAPON_GROUPS) do
+            local items = {}
+            for _, k in ipairs(grp.keys) do
+                for _, wep in ipairs(byKey[k] or {}) do
+                    for _, id in ipairs(wep.ids or {}) do
+                        items[#items+1] = {id=id, wep=wep}
+                    end
+                end
+            end
+            if #items > 0 then
+                WHdr(grp.label.."  |cffAAAAAA("..#items.." item"..(#items~=1 and "s" or "")..")|r")
+                WLine()
+                local col  = 0
+                local rowY = cy - 4
+                for _, itm in ipairs(items) do
+                    local id        = itm.id
+                    local wep       = itm.wep
+                    local canAfford = curAP >= wep.ap
+                    local ratingMet = wep.rating == 0 or bestRating >= wep.rating
+                    local iconBtn = CreateFrame("Button", nil, rfCnt)
+                    iconBtn:SetSize(WICON, WICON)
+                    iconBtn:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", col * WCELL_W, rowY)
+                    local iconTex = iconBtn:CreateTexture(nil, "BACKGROUND")
+                    iconTex:SetAllPoints()
+                    local _,_,_,_,_,_,_,_,_,iconPath = GetItemInfo(id)
+                    iconTex:SetTexture(iconPath or "Interface\Icons\INV_Misc_QuestionMark")
+                    if not (canAfford and ratingMet) then
+                        iconTex:SetDesaturated(true); iconTex:SetVertexColor(0.55, 0.55, 0.55)
+                    end
+                    iconBtn:SetHighlightTexture("Interface\Buttons\ButtonHilight-Square")
+                    local capID, capWep, capCA, capRM = id, wep, canAfford, ratingMet
+                    iconBtn:SetScript("OnEnter", function(self)
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetHyperlink("item:"..capID)
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine(string.format("|cff%s%d Arena Points|r",
+                            capCA and "FFD700" or "FF6666", capWep.ap))
+                        if capWep.rating > 0 then
+                            GameTooltip:AddLine(string.format("|cff%sRequires %d Rating|r",
+                                capRM and "00FF00" or "FF4444", capWep.rating))
+                        else
+                            GameTooltip:AddLine("|cff00FF00No Rating Requirement|r")
+                        end
+                        GameTooltip:Show()
+                    end)
+                    iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    col = col + 1
+                    if col >= WPER_ROW then col = 0; rowY = rowY - WCELL_W end
+                end
+                if col > 0 then rowY = rowY - WCELL_W end
+                cy = rowY - 6
+            end
+        end
+        rfCnt:SetHeight(math.abs(cy) + 20)
     end
-    content:SetHeight(math.abs(cy) + 20)
+
+    -- ================================================================
+    -- HONOR GEAR  (class auto-detected, no manual switcher)
+    -- ================================================================
+    local HICON = 20
+
+    local function BuildHonorContent()
+        ClearContent()
+        local armorType  = CLASS_ARMOR_TYPE[rfClass] or "Cloth"
+        local universal  = rfSeason == 2 and S2_HONOR_UNIVERSAL or S1_HONOR_UNIVERSAL
+        local byArmor    = rfSeason == 2 and S2_HONOR_BYARMOR   or S1_HONOR_BYARMOR
+        local armorRows  = byArmor[armorType] or {}
+        local honor      = GetCurrentHonor()
+        local marks      = GetPvPMarkCounts()
+        local fmt        = BreakUpLargeNumbers or tostring
+        local cy         = -2
+        local HCOL = { name=HICON+2, honor=RCW-195, marks=RCW-130, have=RCW-48 }
+
+        local function HLine()
+            local d=rfCnt:CreateTexture(nil,"ARTWORK")
+            d:SetSize(RCW,1); d:SetPoint("TOPLEFT",rfCnt,"TOPLEFT",0,cy-2)
+            d:SetColorTexture(0.3,0.3,0.3,0.5); cy=cy-8
+        end
+        local function HGHdr(txt)
+            local h=rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
+            h:SetPoint("TOPLEFT",rfCnt,"TOPLEFT",0,cy)
+            h:SetText("|cff00CCFF"..txt.."|r"); cy=cy-16
+        end
+        local function ColHdrs()
+            local function CH(x,t)
+                local f=rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                f:SetPoint("TOPLEFT",rfCnt,"TOPLEFT",x,cy); f:SetText("|cffAAAAAA"..t.."|r")
+            end
+            CH(HCOL.name,"Item"); CH(HCOL.honor,"Honor"); CH(HCOL.marks,"Marks"); CH(HCOL.have,"You Have")
+            cy=cy-14; HLine()
+        end
+
+        local function ItemRow(item, slotData)
+            local honorMet = honor >= slotData.honor
+            local hCol = honorMet and "00FF00" or "FF4444"
+            local allMet = true
+            local mparts = {}
+            for bg, req in pairs(slotData.marks) do
+                local have = marks[bg] or 0
+                if have < req then allMet = false end
+                local mc = have >= req and "00FF00" or "FF4444"
+                mparts[#mparts+1] = string.format("|cff%s%d|r|cffAAAAAA/%d %s|r", mc, have, req, bg)
+            end
+            if #mparts == 0 then mparts[#mparts+1] = "|cff00FF00—|r" end
+            local rowBtn = CreateFrame("Button", nil, rfCnt)
+            rowBtn:SetSize(RCW, HICON)
+            rowBtn:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", 0, cy)
+            rowBtn:SetHighlightTexture("Interface\Buttons\ButtonHilight-Square")
+            local iconTex = rowBtn:CreateTexture(nil, "BACKGROUND")
+            iconTex:SetSize(HICON, HICON)
+            iconTex:SetPoint("LEFT", rowBtn, "LEFT", 0, 0)
+            local _,_,_,_,_,_,_,_,_,iconPath = GetItemInfo(item.id)
+            iconTex:SetTexture(iconPath or "Interface\Icons\INV_Misc_QuestionMark")
+            if not (honorMet and allMet) then
+                iconTex:SetDesaturated(true); iconTex:SetVertexColor(0.55, 0.55, 0.55)
+            end
+            local function BFS(x, t)
+                local f = rowBtn:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                f:SetPoint("LEFT",rowBtn,"LEFT",x,0); f:SetText(t)
+            end
+            local dispName = item.name or ("item:"..item.id)
+            local cached = GetItemInfo(item.id)
+            if cached then dispName = cached end
+            BFS(HCOL.name,  "|cffCCCCCC"..dispName.."|r")
+            BFS(HCOL.honor, string.format("|cff%s%s|r", hCol, fmt(slotData.honor)))
+            BFS(HCOL.marks, table.concat(mparts,"  "))
+            BFS(HCOL.have,  (honorMet and allMet) and "|cff00FF00Ready!|r" or "|cffAAAAAA...|r")
+            local capturedID = item.id
+            rowBtn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetHyperlink("item:"..capturedID)
+                GameTooltip:Show()
+            end)
+            rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            cy = cy - (HICON + 2)
+        end
+
+        HGHdr("Neck & Ring  |cffAAAAAA— all classes|r")
+        ColHdrs()
+        for _, slotData in ipairs(universal) do
+            local prev_cy = cy
+            for _, item in ipairs(slotData.items) do ItemRow(item, slotData) end
+            if cy ~= prev_cy then cy = cy - 4 end
+        end
+        cy = cy - 4
+        HGHdr("Off-pieces  |cffAAAAAA— "..armorType.." ("..rfClass..")|r")
+        ColHdrs()
+        if #armorRows == 0 then
+            local nf=rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+            nf:SetPoint("TOPLEFT",rfCnt,"TOPLEFT",0,cy)
+            nf:SetText("|cff666666No data for "..armorType.."|r"); cy=cy-15
+        else
+            for _, slotData in ipairs(armorRows) do
+                local slbl=rfCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
+                slbl:SetPoint("TOPLEFT",rfCnt,"TOPLEFT",0,cy)
+                slbl:SetText("|cff888888— "..slotData.slot.." —|r"); cy=cy-14
+                for _, item in ipairs(slotData.items) do ItemRow(item, slotData) end
+                cy = cy - 4
+            end
+        end
+        rfCnt:SetHeight(math.abs(cy)+20)
+    end
+
+    -- ================================================================
+    -- CC/DR TABLE
+    -- ================================================================
+    local function BuildDRContent()
+        ClearContent()
+        local crossRef = BuildDRCrossRef()
+        local cy = -4
+        for _, cat in ipairs(DR_CATEGORIES) do
+            local entries = crossRef[cat.id]
+            local hdr = rfCnt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            hdr:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", 2, cy)
+            hdr:SetText(string.format("|cff%s%s|r  |cffAAAAAA— %s|r", cat.color, cat.name, cat.desc))
+            cy = cy - 15
+            local div = rfCnt:CreateTexture(nil, "ARTWORK")
+            div:SetSize(RCW - 8, 1); div:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", 2, cy)
+            div:SetColorTexture(0.3, 0.3, 0.3, 0.5); cy = cy - 5
+            if not entries or #entries == 0 then
+                local ne = rfCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                ne:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", 10, cy)
+                ne:SetText("|cff555555(none)|r"); cy = cy - 14
+            else
+                for _, e in ipairs(entries) do
+                    local ln = rfCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                    ln:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", 10, cy)
+                    ln:SetText(string.format("|cffFFD700%-10s|r  |cffFFFFFF%-22s|r  |cffAAAAAA%s|r",
+                        e.class, e.spell, e.dur))
+                    cy = cy - 14
+                end
+            end
+            cy = cy - 6
+        end
+        local noteDiv = rfCnt:CreateTexture(nil, "ARTWORK")
+        noteDiv:SetSize(RCW - 8, 1); noteDiv:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", 2, cy - 4)
+        noteDiv:SetColorTexture(0.4, 0.35, 0.25, 0.6); cy = cy - 14
+        local noteHdr = rfCnt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        noteHdr:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", 2, cy)
+        noteHdr:SetText("|cff00CCFFTBC-Specific Rules|r"); cy = cy - 15
+        local tbcNotes = {
+            "|cffFFFFFFBlind|r  |cffAAAAAAshares Fear DR (not Cyclone) — changed post-TBC|r",
+            "|cffFFFFFFCyclone|r  |cffAAAAAADRs with itself only in TBC|r",
+            "|cffFFFFFFKidney Shot|r  |cffAAAAAAown stun DR, separate from Cheap Shot|r",
+            "|cffFFFFFFSilences|r  |cffFF4444ZERO DR in TBC|r|cffAAAAAA — chain Garrote+Silence+Spell Lock freely|r",
+            "|cffFFFFFFDeath Coil|r  |cffAAAAAAHorror category, NOT Fear|r",
+            "|cffFFFFFFProc Stuns|r  |cffAAAAAA(Mace Spec) separate DR from activated stuns|r",
+        }
+        for _, note in ipairs(tbcNotes) do
+            local nFS = rfCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            nFS:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", 10, cy)
+            nFS:SetText(note); cy = cy - 14
+        end
+        rfCnt:SetHeight(math.abs(cy) + 20)
+    end
+
+    -- ================================================================
+    -- INFO
+    -- ================================================================
+    local function BuildInfoContent()
+        ClearContent()
+        local INFO_SECTIONS = {
+            { hdr="Overview", body=
+                "BeanArena is a PvP utility addon for WoW TBC Anniversary. It tracks your arena ratings, arena point projections, honor, and battleground marks, and helps you plan gear purchases and understand CC/DR rules, all without leaving the game." },
+            { hdr="Main Window  ( /ba )", body=
+                "Shows your live 2v2 / 3v3 / 5v5 ratings, games played, and projected AP reward for the week. The Arena Point Calculator lets you type in any rating to simulate AP earnings. Banked AP is shown so you can track progress toward your next item." },
+            { hdr="Honor Window  ( /ba honor )", body=
+                "Displays your current honor, progress toward the 75,000 cap, weekly honor plan, BG mark inventory, and a full honor gear checklist with checkboxes to track what you still need." },
+            { hdr="Reference Window  ( /ba gear  |  /ba dr  |  /ba info )", body=
+                "One unified window with a dropdown to switch sections:\nArena Gear — S1/S2 armor icons + AP/rating costs\nWeapons — All weapons, relics, off-hands\nHonor Gear — S1/S2 honor costs (auto-detects class)\nCC/DR Table — All DR categories for TBC\nInfo — This guide" },
+            { hdr="Character Viewer  ( /ba chars )", body=
+                "View arena/honor data for your other characters. Any character that has logged in with BeanArena installed will appear here." },
+            { hdr="Slash Commands", body=
+                "/ba calc [#]    AP for all brackets\n/ba honor [slot] Honor gear cost+progress\n/ba arena [slot] Arena gear cost+progress\n/ba dr [class]  CC & DR for a class\n/ba gear        Reference: Arena Gear\n/ba hgear       Reference: Honor Gear\n/ba weapons     Reference: Weapons\n/ba info        Reference: Info\n/ba marks       BG mark counts\n/ba help        All commands" },
+            { hdr="Tips", body=
+                "BeanArena opens alongside the PvP panel (H key) automatically.\nMinimap: left-click = main window, middle-click = commands.\n/ba calc 1750 checks AP for any rating.\n/ba dr mage lists Mage DR spells.\nFrame position is saved between sessions." },
+        }
+        local cy = -8
+        local PAD_L = 4
+        for _, sec in ipairs(INFO_SECTIONS) do
+            local hdrFS = rfCnt:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            hdrFS:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", PAD_L, cy)
+            hdrFS:SetText("|cffFFD700" .. sec.hdr .. "|r")
+            cy = cy - 18
+            for line in (sec.body .. "\n"):gmatch("([^\n]*)\n") do
+                local bodyFS = rfCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                bodyFS:SetPoint("TOPLEFT", rfCnt, "TOPLEFT", PAD_L + 6, cy)
+                bodyFS:SetWidth(RCW - PAD_L - 10)
+                bodyFS:SetJustifyH("LEFT")
+                bodyFS:SetText("|cffCCCCCC" .. line .. "|r")
+                local wrapEst = math.max(1, math.ceil(#line / 55))
+                cy = cy - (14 * wrapEst)
+            end
+            cy = cy - 10
+        end
+        rfCnt:SetHeight(math.abs(cy) + 20)
+    end
+
+    -- ================================================================
+    -- SwitchSection dispatcher
+    -- ================================================================
+    SwitchSection = function(name)
+        rfSection = name
+        rfSectBtn:SetText(name .. "  v")
+        local hasSeasons = (name == "Arena Gear" or name == "Weapons" or name == "Honor Gear")
+        if hasSeasons then rfS1Btn:Show(); rfS2Btn:Show() else rfS1Btn:Hide(); rfS2Btn:Hide() end
+        if name == "Arena Gear" then rfClassBtn:Show() else rfClassBtn:Hide() end
+        rfScr:SetVerticalScroll(0)
+        if name == "Arena Gear" then
+            BuildArenaContent()
+        elseif name == "Weapons" then
+            for _, wlist in ipairs({S1_WEAPONS, S2_WEAPONS}) do
+                for _, wep in ipairs(wlist) do
+                    if wep.ids then for _, id in ipairs(wep.ids) do GetItemInfo(id) end end
+                end
+            end
+            BuildWeaponsContent()
+        elseif name == "Honor Gear" then
+            local _, cf = UnitClass("player")
+            local cm = {WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
+                        PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
+            rfClass = cm[cf or ""] or "Warrior"
+            for _, list in ipairs({S1_HONOR_UNIVERSAL, S2_HONOR_UNIVERSAL}) do
+                for _, slot in ipairs(list) do
+                    for _, item in ipairs(slot.items) do GetItemInfo(item.id) end
+                end
+            end
+            for _, byArmor in ipairs({S1_HONOR_BYARMOR, S2_HONOR_BYARMOR}) do
+                for _, armorList in pairs(byArmor) do
+                    for _, slot in ipairs(armorList) do
+                        for _, item in ipairs(slot.items) do GetItemInfo(item.id) end
+                    end
+                end
+            end
+            BuildHonorContent()
+        elseif name == "CC/DR Table" then
+            BuildDRContent()
+        elseif name == "Info" then
+            BuildInfoContent()
+        end
+    end
+
+    -- ── Control button wiring ───────────────────────────────────
+    rfSectBtn:SetScript("OnClick", function(self)
+        UIDropDownMenu_Initialize(rfSectDD, function()
+            for _, sec in ipairs(RF_SECTIONS) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = sec; info.value = sec
+                info.notCheckable = true
+                info.func = function() SwitchSection(sec); CloseDropDownMenus() end
+                UIDropDownMenu_AddButton(info)
+            end
+        end, "MENU")
+        ToggleDropDownMenu(1, nil, rfSectDD, self, 0, -4)
+    end)
+
+    rfS1Btn:SetScript("OnClick", function() rfSeason = 1; SwitchSection(rfSection) end)
+    rfS2Btn:SetScript("OnClick", function() rfSeason = 2; SwitchSection(rfSection) end)
+
+    rfClassBtn:SetScript("OnClick", function(self)
+        UIDropDownMenu_Initialize(rfClassDD, function()
+            for _, cls in ipairs(CLASS_LIST) do
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = cls; info.value = cls
+                info.notCheckable = true
+                info.func = function()
+                    rfClass = cls
+                    rfClassBtn:SetText(cls .. "  v")
+                    BuildArenaContent()
+                    CloseDropDownMenus()
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end, "MENU")
+        ToggleDropDownMenu(1, nil, rfClassDD, self, 0, -4)
+    end)
+
+    refFrame:SetScript("OnShow", function()
+        local _, cf = UnitClass("player")
+        local cm = {WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
+                    PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
+        rfClass = cm[cf or ""] or "Warrior"
+        rfClassBtn:SetText(rfClass .. "  v")
+        SwitchSection(rfSection)
+    end)
+
+    BeanArena_OpenRefFrame = function(section, anchorTo)
+        if refFrame:IsShown() and rfSection == section then
+            refFrame:Hide(); return
+        end
+        refFrame:ClearAllPoints()
+        if anchorTo then refFrame:SetPoint("TOPLEFT", anchorTo, "TOPRIGHT", 6, 0)
+        else              refFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0) end
+        SwitchSection(section)
+        refFrame:Show()
+    end
+
+    BeanArena_RefreshRefFrame = function()
+        if refFrame:IsShown() then SwitchSection(rfSection) end
+    end
 end
 
 -- ============================================================
@@ -2518,7 +2495,7 @@ SlashCmdList["BEANARENA"] = function(msg)
     -- No arg: open Arena Gear window.  With arg: print cost info for that slot.
     elseif cmd == "arena" then
         if args == "" then
-            Toggle(arenaGearFrame, frame)
+            BeanArena_OpenRefFrame("Arena Gear", frame)
         else
             local search = args:lower()
             local found = false
@@ -2608,7 +2585,7 @@ SlashCmdList["BEANARENA"] = function(msg)
     -- No arg: list all classes.  With class: print that class's CC and shared DRs.
     elseif cmd == "dr" or cmd == "cc" then
         if args == "" then
-            Toggle(drFrame, frame)
+            BeanArena_OpenRefFrame("CC/DR Table", frame)
         else
             -- Match class name (partial ok)
             local search = args:lower()
@@ -2735,13 +2712,15 @@ SlashCmdList["BEANARENA"] = function(msg)
 
     -- ── /ba gear  /ba hgear ───────────────────────────────────
     elseif cmd == "gear" or cmd == "arenagear" then
-        Toggle(arenaGearFrame, frame)
+        BeanArena_OpenRefFrame("Arena Gear", frame)
     elseif cmd == "hgear" or cmd == "honorgear" then
-        Toggle(honorGearFrame, frame)
+        BeanArena_OpenRefFrame("Honor Gear", frame)
+    elseif cmd == "weapons" then
+        BeanArena_OpenRefFrame("Weapons", frame)
 
     -- ── /ba info  /ba chars  /ba commands ─────────────────────
     elseif cmd == "info" then
-        Toggle(infoFrame, frame)
+        BeanArena_OpenRefFrame("Info", frame)
     elseif cmd == "chars" or cmd == "characters" then
         Toggle(charViewFrame, frame)
     elseif cmd == "commands" then
@@ -2798,7 +2777,7 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
         end
         UpdateMinimapPos()
         SetupPVPHook()
-        print("|cffFFD700[BeanArena]|r v0.3.3 loaded! /ba help")
+        print("|cffFFD700[BeanArena]|r v0.3.6 loaded! /ba help")
         if DB("openOnLogin") then OpenBeanArena() end
     elseif event == "PLAYER_LOGIN" then
         CHAR_NAME  = UnitName("player") or "Unknown"
@@ -2819,10 +2798,9 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "UPDATE_BATTLEFIELD_STATUS" then
         if frame:IsShown() then BeanArena_RefreshFrame() end
     elseif event == "GET_ITEM_INFO_RECEIVED" then
-        -- Flag a rebuild so icons that loaded after the popup opened get shown.
+        -- Flag a rebuild so icons that loaded after a popup opened get shown.
         -- The OnUpdate ticker consumes the flag and does a single rebuild.
-        if (arenaGearFrame and arenaGearFrame:IsShown()) or
-           (honorGearFrame and honorGearFrame:IsShown()) then
+        if refFrame and refFrame:IsShown() then
             itemRefreshPending = true
         end
     end
@@ -2856,11 +2834,10 @@ end
 -- ============================================================
 local ticker = 0
 frame:SetScript("OnUpdate", function(self, elapsed)
-    -- Rebuild gear popups once after item icons finish loading
+    -- Rebuild gear popup once after item icons finish loading
     if itemRefreshPending then
         itemRefreshPending = false
-        if arenaGearFrame:IsShown() then BeanArena_RefreshArenaGearPopup() end
-        if honorGearFrame:IsShown()  then BeanArena_RefreshHonorGearPopup()  end
+        if refFrame:IsShown() then BeanArena_RefreshRefFrame() end
     end
     ticker = ticker + elapsed
     if ticker >= 5 then
@@ -2873,5 +2850,5 @@ frame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 -- ============================================================
--- END OF FILE | BeanArena v0.3.1 | 2026-03-17
+-- END OF FILE | BeanArena v0.3.6 | 2026-05-21
 -- ============================================================
