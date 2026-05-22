@@ -1652,37 +1652,52 @@ end
 -- Sections: Calculator | Honor | Arena Gear | Weapons | Honor Gear | CC/DR Table | Help
 -- ============================================================
 do
-    local OV_RCW = FW - 4 - 8 - 20  -- 398 px: overlay_w - left_pad - scrollbar
+    local OV_RCW = FW - 4 - 8 - 20  -- 398 px content width inside scroll frame
 
-    -- ── Reference content panel — shown when a non-Calculator section is active.
-    --    calcPanel is hidden first so there is nothing underneath to cover.
-    local refOverlay = CreateFrame("Frame", "BeanArenaRefOv", frame)
-    refOverlay:SetPoint("TOPLEFT",     frame, "TOPLEFT",     2, -40)
-    refOverlay:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2,  2)
-    -- Solid background — same dark tone as WoW's dialog backdrop
-    local ovBG = refOverlay:CreateTexture(nil, "BACKGROUND")
-    ovBG:SetAllPoints(refOverlay)
-    ovBG:SetColorTexture(0.06, 0.05, 0.08, 1)
-    refOverlay:Hide()
+    -- ── Standalone reference window — own MakeBGFrame backdrop, no overlay tricks
+    local refFrame = MakeBGFrame("BeanArenaRefFrame", UIParent, FW, FH)
+    refFrame:SetFrameStrata("MEDIUM")
+    refFrame:SetMovable(true); refFrame:EnableMouse(true)
+    refFrame:RegisterForDrag("LeftButton")
+    refFrame:SetScript("OnDragStart", refFrame.StartMoving)
+    refFrame:SetScript("OnDragStop", function(s) s:StopMovingOrSizing() end)
+    refFrame:Hide()
+    RegisterEsc(refFrame)
+
+    -- Title (right-aligned, matches main frame style)
+    local rfTitleFS = refFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    rfTitleFS:SetPoint("TOPRIGHT", refFrame, "TOPRIGHT", -36, -10)
+    rfTitleFS:SetText("|cffFF6600«|r |cffFFD700BeanArena|r |cffFF6600»|r")
+    rfTitleFS:SetJustifyH("RIGHT")
+
+    -- Section label below title
+    local rfSectionFS = refFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    rfSectionFS:SetPoint("TOPRIGHT", refFrame, "TOPRIGHT", -36, -27)
+    rfSectionFS:SetText("|cff666666Reference|r")
+    rfSectionFS:SetJustifyH("RIGHT")
+
+    local rfClose = CreateFrame("Button", nil, refFrame, "UIPanelCloseButton")
+    rfClose:SetPoint("TOPRIGHT", refFrame, "TOPRIGHT", -4, -4)
+    rfClose:SetScript("OnClick", function() refFrame:Hide() end)
 
     local ovSection = "Calculator"
     local ovSeason  = 2
     local ovClass   = "Warrior"
 
     -- ── Season toggle buttons (hidden for Honor, CC/DR Table, Help) ───────
-    local ovS1Btn = CreateFrame("Button", nil, refOverlay, "UIPanelButtonTemplate")
+    local ovS1Btn = CreateFrame("Button", nil, refFrame, "UIPanelButtonTemplate")
     ovS1Btn:SetSize(48, 22)
-    ovS1Btn:SetPoint("TOPLEFT", refOverlay, "TOPLEFT", 8, -6)
+    ovS1Btn:SetPoint("TOPLEFT", refFrame, "TOPLEFT", 8, -8)
     ovS1Btn:SetText("S1"); ovS1Btn:GetFontString():SetFontObject("GameFontNormalSmall")
     ovS1Btn:Hide()
-    local ovS2Btn = CreateFrame("Button", nil, refOverlay, "UIPanelButtonTemplate")
+    local ovS2Btn = CreateFrame("Button", nil, refFrame, "UIPanelButtonTemplate")
     ovS2Btn:SetSize(48, 22)
     ovS2Btn:SetPoint("LEFT", ovS1Btn, "RIGHT", 4, 0)
     ovS2Btn:SetText("S2"); ovS2Btn:GetFontString():SetFontObject("GameFontNormalSmall")
     ovS2Btn:Hide()
 
     -- ── Class selector (Arena Gear only) ─────────────────────────────
-    local ovClassBtn = CreateFrame("Button", nil, refOverlay, "UIPanelButtonTemplate")
+    local ovClassBtn = CreateFrame("Button", nil, refFrame, "UIPanelButtonTemplate")
     ovClassBtn:SetSize(138, 22)
     ovClassBtn:SetPoint("LEFT", ovS2Btn, "RIGHT", 6, 0)
     ovClassBtn:GetFontString():SetFontObject("GameFontNormalSmall")
@@ -1690,9 +1705,9 @@ do
     local ovClassDD = CreateFrame("Frame", "BeanArenaOvClassDD", UIParent, "UIDropDownMenuTemplate")
 
     -- ── Scroll area ───────────────────────────────────────────────────
-    local ovScr = CreateFrame("ScrollFrame", "BeanArenaOvScr", refOverlay, "UIPanelScrollFrameTemplate")
-    ovScr:SetPoint("TOPLEFT",     refOverlay, "TOPLEFT",      8, -34)
-    ovScr:SetPoint("BOTTOMRIGHT", refOverlay, "BOTTOMRIGHT", -20,   4)
+    local ovScr = CreateFrame("ScrollFrame", "BeanArenaOvScr", refFrame, "UIPanelScrollFrameTemplate")
+    ovScr:SetPoint("TOPLEFT",     refFrame, "TOPLEFT",      8, -36)
+    ovScr:SetPoint("BOTTOMRIGHT", refFrame, "BOTTOMRIGHT", -20,   6)
     local ovCnt = CreateFrame("Frame", nil, ovScr)
     ovCnt:SetWidth(OV_RCW); ovCnt:SetHeight(10)
     ovScr:SetScrollChild(ovCnt)
@@ -2390,21 +2405,30 @@ do
     end)
 
     BeanArena_OpenRefFrame = function(section)
-        if not frame:IsShown() then OpenBeanArena() end
-        if section=="Calculator" then
-            refOverlay:Hide(); calcPanel:Show(); ovSection="Calculator"
-        else
-            local _,cf=UnitClass("player")
-            local cm={WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
-                      PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
-            ovClass=cm[cf or ""] or "Warrior"; ovClassBtn:SetText(ovClass.."  v")
-            calcPanel:Hide(); SwitchPage(section); refOverlay:Show()
+        if section == "Calculator" then
+            refFrame:Hide()
+            if not frame:IsShown() then OpenBeanArena() end
+            return
         end
+        -- Open main window too if it's not visible
+        if not frame:IsShown() then OpenBeanArena() end
+        -- Position refFrame next to main frame on first open
+        if not refFrame:IsShown() then
+            refFrame:ClearAllPoints()
+            refFrame:SetPoint("TOPLEFT", frame, "TOPRIGHT", 6, 0)
+        end
+        local _,cf = UnitClass("player")
+        local cm = { WARRIOR="Warrior", PALADIN="Paladin", HUNTER="Hunter", ROGUE="Rogue",
+                     PRIEST="Priest", SHAMAN="Shaman", MAGE="Mage", WARLOCK="Warlock", DRUID="Druid" }
+        ovClass = cm[cf or ""] or "Warrior"; ovClassBtn:SetText(ovClass.."  v")
+        SwitchPage(section)
+        rfSectionFS:SetText("|cff888888"..section.."|r")
+        refFrame:Show()
     end
 
     BeanArena_RefreshRefFrame = function()
-        if refOverlay:IsShown() then
-            if ovSection=="Honor" then RefreshHonorPage()
+        if refFrame:IsShown() then
+            if ovSection == "Honor" then RefreshHonorPage()
             else SwitchPage(ovSection) end
         end
     end
