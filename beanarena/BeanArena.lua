@@ -1655,10 +1655,15 @@ do
     local OV_RCW = FW - 4 - 8 - 20  -- 398 px: overlay_w - left_pad - scrollbar
 
     -- ── Reference content panel — shown when a non-Calculator section is active.
-    --    calcPanel is hidden first so there is nothing to cover.
+    --    calcPanel is hidden first so there is nothing underneath to cover.
     local refOverlay = CreateFrame("Frame", "BeanArenaRefOv", frame)
     refOverlay:SetPoint("TOPLEFT",     frame, "TOPLEFT",     2, -40)
     refOverlay:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2,  2)
+    -- Background so the game world doesn't show through
+    local ovBG = refOverlay:CreateTexture(nil, "BACKGROUND")
+    ovBG:SetAllPoints(refOverlay)
+    ovBG:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background")
+    ovBG:SetHorizTile(true); ovBG:SetVertTile(true)
     refOverlay:Hide()
 
     local ovSection = "Calculator"
