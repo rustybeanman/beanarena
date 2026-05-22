@@ -1168,7 +1168,7 @@ local mainMenuBtn = CreateFrame("Button", "BeanArenaMenuBtn", frame, "UIPanelBut
 mainMenuBtn:SetSize(120, 22)
 mainMenuBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -8)
 mainMenuBtn:GetFontString():SetFontObject("GameFontNormalSmall")
-mainMenuBtn:SetText("Menu  v")
+mainMenuBtn:SetText("Menu")
 local mainMenuDD = CreateFrame("Frame", "BeanArenaMainMenuDD", UIParent, "UIDropDownMenuTemplate")
 mainMenuBtn:SetScript("OnClick", function(self)
     UIDropDownMenu_Initialize(mainMenuDD, function()
@@ -1649,22 +1649,24 @@ end
 do
     local OV_RCW = FW - 4 - 8 - 20  -- 398 px: overlay_w - left_pad - scrollbar
 
-    -- ── Overlay frame (child of frame, covers calc content below title bar) ──
-    local ovTmpl = (BackdropTemplateMixin ~= nil) and "BackdropTemplate" or nil
-    local refOverlay = CreateFrame("Frame", "BeanArenaRefOv", frame, ovTmpl)
+    -- ── Overlay frame (HIGH strata so it covers all MEDIUM calc content) ────
+    local refOverlay = CreateFrame("Frame", "BeanArenaRefOv", UIParent)
+    refOverlay:SetFrameStrata("HIGH")
     refOverlay:SetPoint("TOPLEFT",     frame, "TOPLEFT",     2, -40)
     refOverlay:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2,  2)
-    if not refOverlay.SetBackdrop and BackdropTemplateMixin then
-        Mixin(refOverlay, BackdropTemplateMixin)
-    end
-    if refOverlay.SetBackdrop then
-        refOverlay:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-            tile = true, tileSize = 32,
-        })
-        refOverlay:SetBackdropColor(0, 0, 0, 1)
-    end
+    -- Solid black base so calculator content never bleeds through
+    local ovSolid = refOverlay:CreateTexture(nil, "BACKGROUND")
+    ovSolid:SetAllPoints(refOverlay)
+    ovSolid:SetColorTexture(0, 0, 0, 1)
+    -- WoW dialog texture on top for the proper look
+    local ovBGTex = refOverlay:CreateTexture(nil, "ARTWORK")
+    ovBGTex:SetAllPoints(refOverlay)
+    ovBGTex:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background")
+    ovBGTex:SetHorizTile(true); ovBGTex:SetVertTile(true)
+    ovBGTex:SetAlpha(0.92)
     refOverlay:Hide()
+    -- Ensure overlay hides when main frame is closed (ESC, X button, etc.)
+    frame:HookScript("OnHide", function() refOverlay:Hide() end)
 
     local ovSection = "Calculator"
     local ovSeason  = 2
