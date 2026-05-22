@@ -1,8 +1,8 @@
 ## Interface: 20505
 ## Title: BeanArena
 ## Notes: TBC Anniversary Arena Point Calculator & Honor Tracker
-## Author: Nicepriest
-## Version: 0.3.7
+## Author: beanman
+## Version: 1.0
 ## IconTexture: Interface\Icons\Achievement_Arena_2v2_7
 ## SavedVariables: BeanArenaDB
 ## SavedVariablesPerCharacter: BeanArenaCharDB

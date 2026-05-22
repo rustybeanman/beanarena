@@ -57,7 +57,13 @@
 --         |             CC/DR table revamp (Quick Ref + Full Breakdown); Honor page
 --         |             Arena Gear / Weapons / Honor Gear / CC/DR / Info in one window
 --         |             Honor Gear auto-detects player class (no class switcher)
--- CURRENT: v0.3.7
+-- v0.3.8 | 2026-05-22 | Fix stack overflow: BeanArena_RefreshRefFrame no longer calls
+--         |             SwitchPage from 5-second ticker (only RefreshHonorPage); add
+--         |             BeanArena_RebuildRefPage for one-shot item-icon refresh
+--         |             Fix nil crash: add missing SLOT_DEFS, EQUIP_TO_SLOT, IC_SZ,
+--         |             IC_CELL, SL_W constants required by BuildArenaContent
+-- v1.0    | 2026-05-22 | Public release — CurseForge
+-- CURRENT: v1.0
 -- ============================================================
 
 -- ============================================================
@@ -898,7 +904,7 @@ minimapButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 -- ============================================================
 local OpenBeanArena, OpenCommands, frame, cFrame, SetupPVPHook
 local charViewFrame
-local BeanArena_RefreshRefFrame, BeanArena_OpenRefFrame
+local BeanArena_RefreshRefFrame, BeanArena_OpenRefFrame, BeanArena_RebuildRefPage
 local BeanArena_RefreshFrame, BeanArena_RefreshManual
 
 -- ============================================================
@@ -996,7 +1002,7 @@ titleFS:SetJustifyH("RIGHT")
 
 local versionFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 versionFS:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -36, -27)
-versionFS:SetText("|cff666666v0.3.7  •  TBC Anniversary|r")
+versionFS:SetText("|cff666666v1.0  •  TBC Anniversary|r")
 versionFS:SetJustifyH("RIGHT")
 
 local mainClose = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
@@ -1647,7 +1653,7 @@ local function BuildDRCrossRef()
 end
 
 -- ============================================================
--- EMBEDDED REFERENCE OVERLAY  (v0.3.7)
+-- EMBEDDED REFERENCE OVERLAY
 -- Single-window content panel, switched via Menu dropdown.
 -- Sections: Calculator | Honor | Arena Gear | Weapons | Honor Gear | CC/DR Table | Help
 -- ============================================================
@@ -1701,7 +1707,7 @@ do
     ovClassBtn:SetSize(138, 22)
     ovClassBtn:SetPoint("LEFT", ovS2Btn, "RIGHT", 6, 0)
     ovClassBtn:GetFontString():SetFontObject("GameFontNormalSmall")
-    ovClassBtn:SetText("Warrior  v"); ovClassBtn:Hide()
+    ovClassBtn:SetText("Warrior"); ovClassBtn:Hide()
     local ovClassDD = CreateFrame("Frame", "BeanArenaOvClassDD", UIParent, "UIDropDownMenuTemplate")
 
     -- ── Scroll area ───────────────────────────────────────────────────
@@ -1849,6 +1855,32 @@ do
         end
     end
 
+    -- ── Arena gear layout constants ───────────────────────────────────────────
+    local IC_SZ   = 36          -- icon size (px)
+    local IC_CELL = IC_SZ + 4   -- icon cell width (icon + gap)
+    local SL_W    = 82          -- slot-label column width (px)
+
+    -- Maps WoW equipLoc string → friendly slot name used in slotGrid / SLOT_DEFS
+    local EQUIP_TO_SLOT = {
+        INVTYPE_HEAD     = "Head",
+        INVTYPE_SHOULDER = "Shoulders",
+        INVTYPE_CHEST    = "Chest",
+        INVTYPE_ROBE     = "Chest",
+        INVTYPE_LEGS     = "Legs",
+        INVTYPE_HAND     = "Gloves",
+    }
+
+    -- Ordered slot list with AP cost and personal-rating gate per season.
+    -- apS1/apS2: arena points required.
+    -- ratingS1/ratingS2: personal rating required (0 = no gate).
+    local SLOT_DEFS = {
+        { slot="Head",      apS1=620,  apS2=1550, ratingS1=0,    ratingS2=0    },
+        { slot="Shoulders", apS1=495,  apS2=1245, ratingS1=2000, ratingS2=2000 },
+        { slot="Chest",     apS1=620,  apS2=1550, ratingS1=0,    ratingS2=0    },
+        { slot="Legs",      apS1=620,  apS2=1550, ratingS1=0,    ratingS2=0    },
+        { slot="Gloves",    apS1=370,  apS2=930,  ratingS1=0,    ratingS2=0    },
+    }
+
     local function BuildArenaContent()
         ClearContent()
         local setList    = ovSeason == 2 and CLASS_SETS_S2 or CLASS_SETS_S1
@@ -1938,8 +1970,8 @@ do
         costHdr:SetText("|cff888888Costs (S"..ovSeason.."):|r")
         cy = cy - 15
         for _, def in ipairs(SLOT_DEFS) do
-            local ap     = ovSeason == 2 and def.apS2 or def.apS1
-            local rating = def.rating
+            local ap     = ovSeason == 2 and def.apS2    or def.apS1
+            local rating = ovSeason == 2 and def.ratingS2 or def.ratingS1
             local rMet   = rating == 0 or bestRating >= rating
             local aMet   = curAP >= ap
             local allMet = aMet and rMet
@@ -2365,7 +2397,7 @@ do
             local _,cf=UnitClass("player")
             local cm={WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
                       PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
-            ovClass=cm[cf or ""] or "Warrior"; ovClassBtn:SetText(ovClass.."  v")
+            ovClass=cm[cf or ""] or "Warrior"; ovClassBtn:SetText(ovClass)
             for _,list in ipairs({S1_HONOR_UNIVERSAL,S2_HONOR_UNIVERSAL}) do
                 for _,slot in ipairs(list) do
                     for _,item in ipairs(slot.items) do GetItemInfo(item.id) end
@@ -2395,7 +2427,7 @@ do
                 local info=UIDropDownMenu_CreateInfo()
                 info.text=cls; info.value=cls; info.notCheckable=true
                 info.func=function()
-                    ovClass=cls; ovClassBtn:SetText(cls.."  v")
+                    ovClass=cls; ovClassBtn:SetText(cls)
                     BuildArenaContent(); CloseDropDownMenus()
                 end
                 UIDropDownMenu_AddButton(info)
@@ -2420,16 +2452,28 @@ do
         local _,cf = UnitClass("player")
         local cm = { WARRIOR="Warrior", PALADIN="Paladin", HUNTER="Hunter", ROGUE="Rogue",
                      PRIEST="Priest", SHAMAN="Shaman", MAGE="Mage", WARLOCK="Warlock", DRUID="Druid" }
-        ovClass = cm[cf or ""] or "Warrior"; ovClassBtn:SetText(ovClass.."  v")
+        ovClass = cm[cf or ""] or "Warrior"; ovClassBtn:SetText(ovClass)
         SwitchPage(section)
         rfSectionFS:SetText("|cff888888"..section.."|r")
         refFrame:Show()
     end
 
     BeanArena_RefreshRefFrame = function()
-        if refFrame:IsShown() then
-            if ovSection == "Honor" then RefreshHonorPage()
-            else SwitchPage(ovSection) end
+        -- Only Honor live-updates on the 5-second ticker (it refreshes existing
+        -- FontStrings in-place).  All other pages are static until the user
+        -- switches sections or item data arrives — rebuilding them on every tick
+        -- accumulates hidden frames (WoW TBC has no Destroy) and causes a
+        -- GetChildren() stack overflow after ~50 rebuilds.
+        if refFrame:IsShown() and ovSection == "Honor" then
+            RefreshHonorPage()
+        end
+    end
+
+    -- Called ONCE when GET_ITEM_INFO_RECEIVED fires, to refresh icon textures on
+    -- non-Honor pages (item info wasn't cached on first build so icons were blank).
+    BeanArena_RebuildRefPage = function()
+        if refFrame:IsShown() and ovSection ~= "Honor" then
+            SwitchPage(ovSection)
         end
     end
 end
@@ -2786,7 +2830,7 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
         end
         UpdateMinimapPos()
         SetupPVPHook()
-        print("|cffFFD700[BeanArena]|r v0.3.7 loaded! /ba help")
+        print("|cffFFD700[BeanArena]|r v1.0 loaded! /ba help")
         if DB("openOnLogin") then OpenBeanArena() end
     elseif event == "PLAYER_LOGIN" then
         CHAR_NAME  = UnitName("player") or "Unknown"
@@ -2840,10 +2884,12 @@ end
 -- ============================================================
 local ticker = 0
 frame:SetScript("OnUpdate", function(self, elapsed)
-    -- Rebuild gear popup once after item icons finish loading
+    -- Rebuild gear/weapons page once after item icons finish loading.
+    -- Uses RebuildRefPage (not RefreshRefFrame) so it calls SwitchPage exactly
+    -- once and does not fire on the 5-second ticker path.
     if itemRefreshPending then
         itemRefreshPending = false
-        if BeanArena_RefreshRefFrame then BeanArena_RefreshRefFrame() end
+        if BeanArena_RebuildRefPage then BeanArena_RebuildRefPage() end
     end
     ticker = ticker + elapsed
     if ticker >= 5 then
@@ -2856,5 +2902,5 @@ frame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 -- ============================================================
--- END OF FILE | BeanArena v0.3.7 | 2026-05-21
+-- END OF FILE | BeanArena v1.0 | 2026-05-22
 -- ============================================================

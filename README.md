@@ -1,9 +1,11 @@
 
 # BeanArena
 
-**TBC Anniversary Arena Point Calculator & Honor Tracker**
+**TBC Anniversary Arena Point Calculator & PvP Reference**  `v1.0`
 
-BeanArena is a lightweight addon for WoW TBC Anniversary that calculates weekly arena point rewards, tracks your honor, and provides a built-in reference for gear costs, weapons, CC/DR rules, and general PvP info — all in one place.
+BeanArena is a lightweight addon for WoW TBC Anniversary that calculates weekly arena point rewards, tracks your honor, and provides a built-in reference for gear costs, weapons, CC/DR rules, and general PvP info.
+
+It uses a **two-window design**: a compact calculator that stays pinned to your PvP panel, and a separate reference window that opens beside it on demand with gear icons, cost tables, and matchup data.
 
 ## Features
 
@@ -20,15 +22,17 @@ BeanArena is a lightweight addon for WoW TBC Anniversary that calculates weekly 
 - PvP mark counts for AV, WSG, AB, and EotS scanned from your bags
 
 ### Reference Window
-One unified popup with a dropdown to switch between five sections:
+A **separate draggable window** that opens beside the calculator (or anywhere on screen). Use the **Menu** button in the calculator, or the slash commands below, to open a section. Switch sections via the in-window dropdown.
 
 | Section | Contents |
 |---|---|
-| **Arena Gear** | Icon grid + cost table for S1/S2 arena sets, per-class, season toggle |
-| **Weapons** | All S1/S2 PvP weapons and relics with item tooltips |
-| **Honor Gear** | S1/S2 honor gear costs, auto-detected for your class |
-| **CC/DR Table** | Full cross-reference of CC categories and DR rules for all classes |
+| **Arena Gear** | Icon grid of S1/S2 armor sets per class with item tooltips; cost table showing AP required and personal rating gate per slot |
+| **Weapons** | All S1/S2 PvP weapons and relics with item icons, AP cost, and rating requirement |
+| **Honor Gear** | S1/S2 honor gear costs with mark requirements, auto-detected for your class |
+| **CC/DR Table** | Full cross-reference of CC categories and diminishing-returns groups for all classes |
 | **Info** | Formula reference, bracket multipliers, point caps, and general tips |
+
+The reference window live-updates the **Honor** section on the same 5-second ticker as the calculator. Gear and weapon sections rebuild once when item data finishes loading from the server.
 
 ### Character Viewer
 - Tracks arena points, honor, and rating snapshots across all your characters
@@ -45,13 +49,13 @@ One unified popup with a dropdown to switch between five sections:
 ## Installation
 
 1. Download the latest zip from the [Releases](../../releases) page (or clone this repo)
-2. Extract and copy the `beanarena` folder into your TBC Anniversary AddOns directory:
+2. Extract and copy the `BeanArena` folder into your TBC Anniversary AddOns directory:
    ```
-   World of Warcraft\_anniversary_\Interface\AddOns\beanarena\
+   World of Warcraft\_anniversary_\Interface\AddOns\BeanArena\
    ```
 3. The folder should contain:
    ```
-   beanarena/
+   BeanArena/
    ├── BeanArena.toc
    └── BeanArena.lua
    ```
@@ -68,8 +72,8 @@ All commands use `/ba` (or `/beanarena`):
 | `/ba` | Toggle main window |
 | `/ba calc [rating]` | AP for live ratings or a specific rating |
 | `/ba target <ap>` | Rating needed to earn a target AP amount |
-| `/ba honor [slot]` | Open honor window, or print slot cost to chat |
-| `/ba arena [slot]` | Open arena gear reference, or print slot cost to chat |
+| `/ba honor` | Open reference window → Honor section |
+| `/ba arena` | Open reference window → Arena Gear section |
 | `/ba dr [class]` | Open CC/DR table, or print a class's CC list to chat |
 | `/ba gear` | Open arena gear costs section |
 | `/ba hgear` | Open honor gear costs section |
@@ -121,7 +125,7 @@ BeanArena stores data in `BeanArenaDB` (account-wide) and `BeanArenaCharDB` (per
 
 ## Author
 
-**Nicepriest**
+**beanman**
 
 ---
 
