@@ -1005,18 +1005,23 @@ mainClose:SetScript("OnClick", function() frame:Hide() end)
 
 
 
--- ── Helpers scoped to main frame ─────────────────────────────
+-- Calculator content container — hidden when a reference section is shown.
+-- Created here (last child of frame) so show/hide is one call.
+local calcPanel = CreateFrame("Frame", nil, frame)
+calcPanel:SetAllPoints(frame)
+
+-- ── Helpers scoped to calcPanel ──────────────────────────────
 local function SmallHdr(x, y, txt)
-    local f = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    f:SetPoint("TOPLEFT", frame, "TOPLEFT", x, y)
+    local f = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", x, y)
     f:SetText("|cffAAAAAA" .. txt .. "|r")
 end
 
 -- ══════════════════════════════════════════════════════════════
 -- SECTION: CURRENT ARENA RATINGS
 -- ══════════════════════════════════════════════════════════════
-MakeHeader(frame, Y.LHEAD, "Current Arena Ratings", LC)
-MakeLine(frame, Y.LLINE1, CW, LC)
+MakeHeader(calcPanel, Y.LHEAD, "Current Arena Ratings", LC)
+MakeLine(calcPanel, Y.LLINE1, CW, LC)
 
 -- Bracket | Games | Rating | Reward AP | Total AP
 local LCOL = { br=LC, gms=LC+60, rat=LC+112, pts=LC+182, tot=LC+268 }
@@ -1025,13 +1030,13 @@ SmallHdr(LCOL.gms, Y.LCOLHDR, "Games")
 SmallHdr(LCOL.rat, Y.LCOLHDR, "Rating")
 SmallHdr(LCOL.pts, Y.LCOLHDR, "Reward AP")
 SmallHdr(LCOL.tot, Y.LCOLHDR, "Total AP")
-MakeLine(frame, Y.LLINE2, CW, LC)
+MakeLine(calcPanel, Y.LLINE2, CW, LC)
 
 local function LiveRow(y, label)
-    local l = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    l:SetPoint("TOPLEFT", frame, "TOPLEFT", LCOL.br, y)
+    local l = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    l:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", LCOL.br, y)
     l:SetText(label); l:SetTextColor(0.8, 0.8, 0.8)
-    local function F(x) return FS(frame, x, y) end
+    local function F(x) return FS(calcPanel, x, y) end
     -- liveR=rating, liveG=games, liveP=reward AP, liveT=total AP
     return F(LCOL.rat), F(LCOL.gms), F(LCOL.pts), F(LCOL.tot)
 end
@@ -1039,37 +1044,37 @@ end
 local liveR2, liveG2, liveP2, liveT2 = LiveRow(Y.L2V2, "2v2")
 local liveR3, liveG3, liveP3, liveT3 = LiveRow(Y.L3V3, "3v3")
 local liveR5, liveG5, liveP5, liveT5 = LiveRow(Y.L5V5, "5v5")
-MakeLine(frame, Y.LLINE3, CW, LC)
+MakeLine(calcPanel, Y.LLINE3, CW, LC)
 
-local apLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-apLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y.LBANKED)
+local apLbl = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+apLbl:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", LC, Y.LBANKED)
 apLbl:SetText("Banked AP:"); apLbl:SetTextColor(0.8, 0.8, 0.8)
-local apInlineVal = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+local apInlineVal = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 apInlineVal:SetPoint("LEFT", apLbl, "RIGHT", 8, 0); apInlineVal:SetText("--")
 
 -- ══════════════════════════════════════════════════════════════
 -- SECTION: ARENA POINT CALCULATOR
 -- ══════════════════════════════════════════════════════════════
-MakeLine(frame, Y.LLINE4, CW, LC)
-MakeHeader(frame, Y.MHEAD, "Arena Point Calculator", LC)
-MakeLine(frame, Y.MLINE1, CW, LC)
+MakeLine(calcPanel, Y.LLINE4, CW, LC)
+MakeHeader(calcPanel, Y.MHEAD, "Arena Point Calculator", LC)
+MakeLine(calcPanel, Y.MLINE1, CW, LC)
 
 local CALC = { lbl=LC, eb=LC+110, res=LC+240 }
 SmallHdr(CALC.lbl, Y.MCALCHDR, "Bracket")
 SmallHdr(CALC.eb,  Y.MCALCHDR, "Rating")
 SmallHdr(CALC.res, Y.MCALCHDR, "Arena Points")
-MakeLine(frame, Y.MLINE1B, CW, LC)
+MakeLine(calcPanel, Y.MLINE1B, CW, LC)
 
 local editFocused = {}
 local manResultFS = {}
 
 local function MakeCalcRow(y, labelText, dbKey, bracket)
-    local l = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    l:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.lbl, y)
+    local l = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    l:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", CALC.lbl, y)
     l:SetText(labelText); l:SetTextColor(0.8, 0.8, 0.8)
-    local eb = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+    local eb = CreateFrame("EditBox", nil, calcPanel, "InputBoxTemplate")
     eb:SetSize(88, 20)
-    eb:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.eb, y + 4)
+    eb:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", CALC.eb, y + 4)
     eb:SetAutoFocus(false); eb:SetNumeric(true); eb:SetMaxLetters(4)
     eb:SetText(tostring(DB(dbKey)))
     eb:SetScript("OnEditFocusGained", function() editFocused[dbKey] = true end)
@@ -1085,8 +1090,8 @@ local function MakeCalcRow(y, labelText, dbKey, bracket)
     eb:SetScript("OnEscapePressed", function(self)
         self:SetText(tostring(DB(dbKey))); self:ClearFocus()
     end)
-    local res = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    res:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.res, y); res:SetText("--")
+    local res = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    res:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", CALC.res, y); res:SetText("--")
     manResultFS[bracket] = res
     return eb
 end
@@ -1095,29 +1100,29 @@ local man2v2Edit = MakeCalcRow(Y.M2V2, "2v2:", "manual2v2", "2v2")
 local man3v3Edit = MakeCalcRow(Y.M3V3, "3v3:", "manual3v3", "3v3")
 local man5v5Edit = MakeCalcRow(Y.M5V5, "5v5:", "manual5v5", "5v5")
 
-MakeLine(frame, Y.MLINE2, CW, LC)
+MakeLine(calcPanel, Y.MLINE2, CW, LC)
 
 -- ══════════════════════════════════════════════════════════════
 -- SECTION: RATING TARGET  (AP > Rating inverse calculator)
 -- ══════════════════════════════════════════════════════════════
-MakeLine(frame, Y.TLINE, CW, LC)
-MakeHeader(frame, Y.THEAD, "Rating Target", LC)
-MakeLine(frame, Y.TLINE2, CW, LC)
+MakeLine(calcPanel, Y.TLINE, CW, LC)
+MakeHeader(calcPanel, Y.THEAD, "Rating Target", LC)
+MakeLine(calcPanel, Y.TLINE2, CW, LC)
 
 SmallHdr(CALC.lbl,  Y.TINPUT + 10, "AP Goal")
 
-local targetLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-targetLbl:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.lbl, Y.TINPUT)
+local targetLbl = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+targetLbl:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", CALC.lbl, Y.TINPUT)
 targetLbl:SetText("Target AP:"); targetLbl:SetTextColor(0.8, 0.8, 0.8)
 
-local targetResultFS = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-targetResultFS:SetPoint("TOPLEFT", frame, "TOPLEFT", LC, Y.TRES)
+local targetResultFS = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+targetResultFS:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", LC, Y.TRES)
 targetResultFS:SetWidth(CW)
 targetResultFS:SetText("--")
 
-local targetAPEdit = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+local targetAPEdit = CreateFrame("EditBox", nil, calcPanel, "InputBoxTemplate")
 targetAPEdit:SetSize(88, 20)
-targetAPEdit:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC.eb, Y.TINPUT + 4)
+targetAPEdit:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", CALC.eb, Y.TINPUT + 4)
 targetAPEdit:SetAutoFocus(false); targetAPEdit:SetNumeric(true); targetAPEdit:SetMaxLetters(4)
 targetAPEdit:SetText(DB("targetAP") > 0 and tostring(DB("targetAP")) or "")
 
@@ -1159,7 +1164,7 @@ RefreshTargetCalc = function()
     targetResultFS:SetText(table.concat(parts, "  |cff444444·|r  "))
 end
 
-MakeLine(frame, Y.TLINE3, CW, LC)
+MakeLine(calcPanel, Y.TLINE3, CW, LC)
 
 -- ── Row 1: Arena Gear | Weapons | Honor Gear ──────────────────────────
 -- ── Menu dropdown (top-left of frame) ──────────────────────────────
@@ -1182,14 +1187,14 @@ mainMenuBtn:SetScript("OnClick", function(self)
     ToggleDropDownMenu(1, nil, mainMenuDD, self, 0, -4)
 end)
 
-local charDDLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-charDDLbl:SetPoint("TOP", frame, "TOP", 0, Y.CHARDD + 16)
+local charDDLbl = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+charDDLbl:SetPoint("TOP", calcPanel, "TOP", 0, Y.CHARDD + 16)
 charDDLbl:SetText("|cff888888Viewing:|r")
 charDDLbl:SetJustifyH("CENTER")
 
-local charDD = CreateFrame("Frame", "BeanArenaCharDD", frame, "UIDropDownMenuTemplate")
+local charDD = CreateFrame("Frame", "BeanArenaCharDD", calcPanel, "UIDropDownMenuTemplate")
 UIDropDownMenu_SetWidth(charDD, 260)
-charDD:SetPoint("TOP", frame, "TOP", 0, Y.CHARDD - 4)
+charDD:SetPoint("TOP", calcPanel, "TOP", 0, Y.CHARDD - 4)
 
 -- Track which character's data is being shown (nil = current char)
 local viewingSnap = nil  -- nil means live/current char
@@ -1649,15 +1654,11 @@ end
 do
     local OV_RCW = FW - 4 - 8 - 20  -- 398 px: overlay_w - left_pad - scrollbar
 
-    -- ── Content panel: child of frame, created last so its frame-level sits
-    --    above every calculator widget; BACKGROUND layer covers their OVERLAY text
+    -- ── Reference content panel — shown when a non-Calculator section is active.
+    --    calcPanel is hidden first so there is nothing to cover.
     local refOverlay = CreateFrame("Frame", "BeanArenaRefOv", frame)
     refOverlay:SetPoint("TOPLEFT",     frame, "TOPLEFT",     2, -40)
     refOverlay:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2,  2)
-    local ovBGTex = refOverlay:CreateTexture(nil, "BACKGROUND")
-    ovBGTex:SetAllPoints(refOverlay)
-    ovBGTex:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background")
-    ovBGTex:SetHorizTile(true); ovBGTex:SetVertTile(true)
     refOverlay:Hide()
 
     local ovSection = "Calculator"
@@ -2387,13 +2388,13 @@ do
     BeanArena_OpenRefFrame = function(section)
         if not frame:IsShown() then OpenBeanArena() end
         if section=="Calculator" then
-            refOverlay:Hide(); ovSection="Calculator"
+            refOverlay:Hide(); calcPanel:Show(); ovSection="Calculator"
         else
             local _,cf=UnitClass("player")
             local cm={WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
                       PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
             ovClass=cm[cf or ""] or "Warrior"; ovClassBtn:SetText(ovClass.."  v")
-            SwitchPage(section); refOverlay:Show()
+            calcPanel:Hide(); SwitchPage(section); refOverlay:Show()
         end
     end
 
