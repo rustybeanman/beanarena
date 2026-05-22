@@ -1,0 +1,15 @@
+# Release archives
+*.zip
+*.tar.gz
+*.rar
+
+# Claude Code session data
+.claude/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# OS junk
+.DS_Store
+Thumbs.db
