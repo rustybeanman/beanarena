@@ -1659,11 +1659,10 @@ do
     local refOverlay = CreateFrame("Frame", "BeanArenaRefOv", frame)
     refOverlay:SetPoint("TOPLEFT",     frame, "TOPLEFT",     2, -40)
     refOverlay:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2,  2)
-    -- Background so the game world doesn't show through
+    -- Solid background — same dark tone as WoW's dialog backdrop
     local ovBG = refOverlay:CreateTexture(nil, "BACKGROUND")
     ovBG:SetAllPoints(refOverlay)
-    ovBG:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background")
-    ovBG:SetHorizTile(true); ovBG:SetVertTile(true)
+    ovBG:SetColorTexture(0.06, 0.05, 0.08, 1)
     refOverlay:Hide()
 
     local ovSection = "Calculator"
