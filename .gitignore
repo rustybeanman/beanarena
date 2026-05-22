@@ -9,6 +9,7 @@
 # Python cache
 __pycache__/
 *.pyc
+*.py
 
 # OS junk
 .DS_Store
