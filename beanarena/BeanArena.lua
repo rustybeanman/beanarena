@@ -1649,24 +1649,16 @@ end
 do
     local OV_RCW = FW - 4 - 8 - 20  -- 398 px: overlay_w - left_pad - scrollbar
 
-    -- ── Overlay frame (HIGH strata so it covers all MEDIUM calc content) ────
-    local refOverlay = CreateFrame("Frame", "BeanArenaRefOv", UIParent)
-    refOverlay:SetFrameStrata("HIGH")
+    -- ── Content panel: child of frame, created last so its frame-level sits
+    --    above every calculator widget; BACKGROUND layer covers their OVERLAY text
+    local refOverlay = CreateFrame("Frame", "BeanArenaRefOv", frame)
     refOverlay:SetPoint("TOPLEFT",     frame, "TOPLEFT",     2, -40)
     refOverlay:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -2,  2)
-    -- Solid black base so calculator content never bleeds through
-    local ovSolid = refOverlay:CreateTexture(nil, "BACKGROUND")
-    ovSolid:SetAllPoints(refOverlay)
-    ovSolid:SetColorTexture(0, 0, 0, 1)
-    -- WoW dialog texture on top for the proper look
-    local ovBGTex = refOverlay:CreateTexture(nil, "ARTWORK")
+    local ovBGTex = refOverlay:CreateTexture(nil, "BACKGROUND")
     ovBGTex:SetAllPoints(refOverlay)
     ovBGTex:SetTexture("Interface\\DialogFrame\\UI-DialogBox-Background")
     ovBGTex:SetHorizTile(true); ovBGTex:SetVertTile(true)
-    ovBGTex:SetAlpha(0.92)
     refOverlay:Hide()
-    -- Ensure overlay hides when main frame is closed (ESC, X button, etc.)
-    frame:HookScript("OnHide", function() refOverlay:Hide() end)
 
     local ovSection = "Calculator"
     local ovSeason  = 2
@@ -2171,28 +2163,42 @@ do
         qdiv:SetSize(OV_RCW,1); qdiv:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",0,cy)
         qdiv:SetColorTexture(0.3,0.3,0.3,0.5); cy=cy-6
 
+        -- Cat name column is 128 px; spell list gets the rest
+        local CAT_COL_W = 128
+        local SP_COL_X  = PAD + CAT_COL_W
+        local SP_COL_W  = OV_RCW - SP_COL_X - PAD
+        -- Approximate chars that fit on one line at GameFontNormalSmall (~7 px/char)
+        local CHARS_PER_LINE = math.floor(SP_COL_W / 7)
+
         for _,cat in ipairs(DR_CATEGORIES) do
             local entries=crossRef[cat.id]
             local catLbl=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
             catLbl:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",PAD,cy)
-            catLbl:SetText(string.format("|cff%s%-16s|r",cat.color,cat.name))
+            catLbl:SetText("|cff"..cat.color..cat.name.."|r")
+
+            local spellText, rawLen
             if cat.id=="SILENCE" then
-                local nodrFS=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                nodrFS:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",PAD+140,cy)
-                nodrFS:SetText("|cffFF4444NO DR in TBC — chain freely|r")
+                spellText = "|cffFF4444NO DR in TBC — chain freely|r"
+                rawLen    = 32
             elseif entries and #entries>0 then
                 local spells={}
                 for _,e in ipairs(entries) do spells[#spells+1]=e.spell end
-                local spFS=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                spFS:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",PAD+140,cy)
-                spFS:SetWidth(OV_RCW-PAD-145)
-                spFS:SetText("|cffCCCCCC"..table.concat(spells,"  ·  ").."|r")
+                local joined = table.concat(spells,"  ·  ")
+                spellText = "|cffCCCCCC"..joined.."|r"
+                rawLen    = #joined
             else
-                local neFS=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                neFS:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",PAD+140,cy)
-                neFS:SetText("|cff555555(none)|r")
+                spellText = "|cff555555(none)|r"
+                rawLen    = 6
             end
-            cy=cy-14
+
+            local spFS=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+            spFS:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",SP_COL_X,cy)
+            spFS:SetWidth(SP_COL_W)
+            spFS:SetText(spellText)
+
+            -- Advance by estimated wrapped height so rows never collide
+            local lines = math.max(1, math.ceil(rawLen / CHARS_PER_LINE))
+            cy = cy - (lines * 13 + 5)
         end
 
         cy=cy-6
@@ -2224,10 +2230,15 @@ do
                 ne:SetText("|cff555555(none)|r"); cy=cy-14
             else
                 for _,e in ipairs(entries) do
-                    local ln=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                    ln:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",PAD+8,cy)
-                    ln:SetText(string.format("|cffFFD700%-10s|r  |cffFFFFFF%-22s|r  |cffAAAAAA%s|r",
-                        e.class,e.spell,e.dur))
+                    local clsFS=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                    clsFS:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",PAD+8,cy)
+                    clsFS:SetText("|cffFFD700"..e.class.."|r")
+                    local spFS=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                    spFS:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",PAD+88,cy)
+                    spFS:SetText("|cffFFFFFF"..e.spell.."|r")
+                    local durFS=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                    durFS:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",PAD+250,cy)
+                    durFS:SetText("|cffAAAAAA"..e.dur.."|r")
                     cy=cy-14
                 end
             end
