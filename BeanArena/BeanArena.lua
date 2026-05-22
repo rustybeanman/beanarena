@@ -2902,5 +2902,5 @@ frame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 -- ============================================================
--- END OF FILE | BeanArena v1.0 | 2026-05-22
+-- END OF FILE | BeanArena v1.0.1 | 2026-05-22
 -- ============================================================
