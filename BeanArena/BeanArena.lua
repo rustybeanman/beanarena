@@ -115,11 +115,13 @@ local function SnapshotCharData()
     BeanArenaDB.chars = BeanArenaDB.chars or {}
     local key = CHAR_NAME .. "-" .. CHAR_REALM
     local r2,r3,r5,g2,g3,g5 = GetLiveRatings()
+    local marks = GetPvPMarkCounts()
     local snap = {
         name         = CHAR_NAME,
         realm        = CHAR_REALM,
         arenaPoints  = GetCurrentArenaPoints(),
         honor        = GetCurrentHonor(),
+        marks        = marks,
         r2=r2, r3=r3, r5=r5, g2=g2, g3=g3, g5=g5,
         timestamp    = time(),
     }
@@ -1058,6 +1060,12 @@ apLbl:SetText("Banked AP:"); apLbl:SetTextColor(0.8, 0.8, 0.8)
 local apInlineVal = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 apInlineVal:SetPoint("LEFT", apLbl, "RIGHT", 8, 0); apInlineVal:SetText("--")
 
+local honLbl = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+honLbl:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", LC + 200, Y.LBANKED)
+honLbl:SetText("Honor:"); honLbl:SetTextColor(0.8, 0.8, 0.8)
+local honorInlineVal = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+honorInlineVal:SetPoint("LEFT", honLbl, "RIGHT", 8, 0); honorInlineVal:SetText("--")
+
 -- ══════════════════════════════════════════════════════════════
 -- SECTION: ARENA POINT CALCULATOR
 -- ══════════════════════════════════════════════════════════════
@@ -1245,6 +1253,11 @@ local function ApplyCharView(snap)
         liveT3:SetText(sp3>0 and string.format("|cff88FF88%.0f|r", sap+sp3) or "|cff666666--|r")
         liveT5:SetText(sp5>0 and string.format("|cff88FF88%.0f|r", sap+sp5) or "|cff666666--|r")
         apInlineVal:SetText(sap > 0 and string.format("|cff88FF88%d|r", sap) or "|cff666666--|r")
+        local sfmt = BreakUpLargeNumbers or tostring
+        local shon = snap.honor or 0
+        honorInlineVal:SetText(shon > 0
+            and string.format("|cffFFD700%s|r", sfmt(shon))
+            or  "|cff666666--|r")
     end
 end
 
@@ -1501,7 +1514,12 @@ end
 
 local function RefreshLive()
     local r2,r3,r5,g2,g3,g5 = GetLiveRatings()
-    local curAP = GetCurrentArenaPoints()
+    local curAP   = GetCurrentArenaPoints()
+    local curHon  = GetCurrentHonor()
+    local fmt     = BreakUpLargeNumbers or tostring
+    honorInlineVal:SetText(curHon > 0
+        and string.format("|cffFFD700%s|r", fmt(curHon))
+        or  "|cff666666--|r")
     local function GT(g)
         return g >= 10 and string.format("|cff00FF00%d|r", g)
                        or  string.format("|cffFF4444%d/10|r", g)
