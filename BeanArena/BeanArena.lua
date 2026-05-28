@@ -1004,7 +1004,7 @@ titleFS:SetJustifyH("RIGHT")
 
 local versionFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 versionFS:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -36, -27)
-versionFS:SetText("|cff666666v1.0  •  TBC Anniversary|r")
+versionFS:SetText("|cff666666v" .. (GetAddOnMetadata and GetAddOnMetadata("BeanArena","Version") or "1.0.3") .. "  •  TBC Anniversary|r")
 versionFS:SetJustifyH("RIGHT")
 
 local mainClose = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
@@ -2848,7 +2848,7 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
         end
         UpdateMinimapPos()
         SetupPVPHook()
-        print("|cffFFD700[BeanArena]|r v1.0 loaded! /ba help")
+        print("|cffFFD700[BeanArena]|r v" .. (GetAddOnMetadata and GetAddOnMetadata("BeanArena","Version") or "?") .. " loaded! /ba help")
         if DB("openOnLogin") then OpenBeanArena() end
     elseif event == "PLAYER_LOGIN" then
         CHAR_NAME  = UnitName("player") or "Unknown"
@@ -2920,5 +2920,5 @@ frame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 -- ============================================================
--- END OF FILE | BeanArena v1.0.1 | 2026-05-22
+-- END OF FILE | BeanArena v1.0.3 | 2026-05-22
 -- ============================================================
