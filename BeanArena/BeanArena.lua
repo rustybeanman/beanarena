@@ -115,7 +115,7 @@ local function SnapshotCharData()
     BeanArenaDB.chars = BeanArenaDB.chars or {}
     local key = CHAR_NAME .. "-" .. CHAR_REALM
     local r2,r3,r5,g2,g3,g5 = GetLiveRatings()
-    local marks = GetPvPMarkCounts()
+    local marks = GetPvPMarkCounts and GetPvPMarkCounts() or {}
     local snap = {
         name         = CHAR_NAME,
         realm        = CHAR_REALM,
