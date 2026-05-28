@@ -1,0 +1,8 @@
+package-as: BeanArena
+
+ignore:
+  - README.md
+  - LICENSE
+  - .gitignore
+  - "*.zip"
+  - "*.py"
