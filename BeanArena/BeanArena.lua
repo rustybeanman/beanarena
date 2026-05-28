@@ -2820,12 +2820,51 @@ end
 -- cleared by the OnUpdate ticker which then rebuilds the popup once.
 local itemRefreshPending = false
 
+-- ============================================================
+-- VERSION BROADCAST  (peer-to-peer via addon message channel)
+-- ============================================================
+local BA_VERSION = GetAddOnMetadata and GetAddOnMetadata("BeanArena", "Version") or "1.0.3"
+local BA_MSG_PREFIX = "BeanArena"
+local versionWarnShown = false
+
+-- Returns true if version string a is strictly newer than b.
+-- Compares up to three dot-separated numeric parts: major.minor.patch
+local function VersionIsNewer(a, b)
+    local function parts(v)
+        local x,y,z = tostring(v):match("(%d+)%.?(%d*)%.?(%d*)")
+        return tonumber(x) or 0, tonumber(y) or 0, tonumber(z) or 0
+    end
+    local a1,a2,a3 = parts(a)
+    local b1,b2,b3 = parts(b)
+    if a1 ~= b1 then return a1 > b1 end
+    if a2 ~= b2 then return a2 > b2 end
+    return a3 > b3
+end
+
+local function BroadcastVersion()
+    if not RegisterAddonMessagePrefix then return end
+    RegisterAddonMessagePrefix(BA_MSG_PREFIX)
+    local payload = "VERSION:" .. BA_VERSION
+    if IsInRaid and IsInRaid() then
+        SendAddonMessage(BA_MSG_PREFIX, payload, "RAID")
+    elseif IsInGroup and IsInGroup() then
+        SendAddonMessage(BA_MSG_PREFIX, payload, "PARTY")
+    end
+    if IsInGuild and IsInGuild() then
+        SendAddonMessage(BA_MSG_PREFIX, payload, "GUILD")
+    end
+end
+
 local eFrame = CreateFrame("Frame")
 eFrame:RegisterEvent("ADDON_LOADED")
 eFrame:RegisterEvent("PLAYER_LOGIN")
 eFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eFrame:RegisterEvent("UPDATE_BATTLEFIELD_STATUS")
 eFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+eFrame:RegisterEvent("CHAT_MSG_ADDON")
+if RegisterAddonMessagePrefix then
+    RegisterAddonMessagePrefix(BA_MSG_PREFIX)
+end
 
 eFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and type(arg1)=="string" and arg1:lower() == ADDON_NAME:lower() then
@@ -2859,12 +2898,31 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
     elseif event == "PLAYER_ENTERING_WORLD" then
         if RequestPVPRewardsUpdate then RequestPVPRewardsUpdate() end
         if frame:IsShown() then BeanArena_RefreshFrame() end
-        -- Update snapshots with fresh live data after ratings have loaded
+        -- Update snapshots and broadcast version after ratings have loaded
         if C_Timer and C_Timer.After then
             C_Timer.After(3, function()
                 SnapshotCharData()
                 WriteAltSnapshot()
+                BroadcastVersion()
             end)
+        end
+    elseif event == "CHAT_MSG_ADDON" then
+        -- arg1=prefix, arg2=message, arg3=channel, arg4=sender
+        local prefix, message, _, sender = arg1, arg2, arg3, arg4
+        if prefix == BA_MSG_PREFIX and message then
+            local theirVersion = message:match("^VERSION:(.+)$")
+            if theirVersion and not versionWarnShown then
+                if VersionIsNewer(theirVersion, BA_VERSION) then
+                    versionWarnShown = true
+                    print(string.format(
+                        "|cffFFD700[BeanArena]|r Your version |cffFF6666%s|r is outdated. " ..
+                        "|cff%s%s|r has version |cff00FF00%s|r. " ..
+                        "Get the latest at |cffAAAAAAcurseforge.com|r (/ba help)",
+                        BA_VERSION,
+                        "AAAAAA", sender,
+                        theirVersion))
+                end
+            end
         end
     elseif event == "UPDATE_BATTLEFIELD_STATUS" then
         if frame:IsShown() then BeanArena_RefreshFrame() end
@@ -2920,5 +2978,5 @@ frame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 -- ============================================================
--- END OF FILE | BeanArena v1.0.3 | 2026-05-22
+-- END OF FILE | BeanArena v1.0.4 | 2026-05-22
 -- ============================================================
