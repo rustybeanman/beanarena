@@ -78,6 +78,14 @@ BeanArenaCharDB = BeanArenaCharDB or {}   -- per-char SavedVariable
 local ADDON_NAME    = "BeanArena"
 local RESET_WEEKDAY = 3 -- Tuesday (wday=3)
 
+-- @project-version@ is replaced by BigWigs Packager at release time.
+-- Falls back to GetAddOnMetadata (if available) or "dev" for local runs.
+local BA_VERSION = (function()
+    local v = "@project-version@"
+    if v:sub(1, 1) ~= "@" then return v end
+    return (GetAddOnMetadata and GetAddOnMetadata("BeanArena", "Version")) or "dev"
+end)()
+
 -- Character identity (populated on PLAYER_LOGIN)
 local CHAR_NAME, CHAR_REALM
 
@@ -1004,7 +1012,7 @@ titleFS:SetJustifyH("RIGHT")
 
 local versionFS = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 versionFS:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -36, -27)
-versionFS:SetText("|cff666666v" .. (GetAddOnMetadata and GetAddOnMetadata("BeanArena","Version") or "1.0.3") .. "  •  TBC Anniversary|r")
+versionFS:SetText("|cff666666v" .. BA_VERSION .. "  •  TBC Anniversary|r")
 versionFS:SetJustifyH("RIGHT")
 
 local mainClose = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
@@ -2823,7 +2831,6 @@ local itemRefreshPending = false
 -- ============================================================
 -- VERSION BROADCAST  (peer-to-peer via addon message channel)
 -- ============================================================
-local BA_VERSION = GetAddOnMetadata and GetAddOnMetadata("BeanArena", "Version") or "1.0.3"
 local BA_MSG_PREFIX = "BeanArena"
 local versionWarnShown = false
 
@@ -2887,7 +2894,7 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
         end
         UpdateMinimapPos()
         SetupPVPHook()
-        print("|cffFFD700[BeanArena]|r v" .. (GetAddOnMetadata and GetAddOnMetadata("BeanArena","Version") or "?") .. " loaded! /ba help")
+        print("|cffFFD700[BeanArena]|r v" .. BA_VERSION .. " loaded! /ba help")
         if DB("openOnLogin") then OpenBeanArena() end
     elseif event == "PLAYER_LOGIN" then
         CHAR_NAME  = UnitName("player") or "Unknown"
