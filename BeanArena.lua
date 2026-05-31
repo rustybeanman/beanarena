@@ -898,7 +898,7 @@ minimapButton:SetScript("OnEnter", function(self)
     if honor >= 70000 then GameTooltip:AddLine("|cffFF4444Warning: Near honor cap! Spend soon.|r") end
     GameTooltip:AddLine(string.format("Arena Points: |cff88FF88%d|r", ap), 0.8,0.8,0.8)
     if best > 0 then
-        GameTooltip:AddLine(string.format("Best reward: |cffFFD700%.0f AP|r  (%s)", best, bb), 0.8,0.8,0.8)
+        GameTooltip:AddLine(string.format("Best reward: |cffFFD700%.0f Arena Points|r  (%s)", best, bb), 0.8,0.8,0.8)
     end
     GameTooltip:AddLine(" ")
     GameTooltip:AddLine("Left-click: toggle window",  0.6,0.6,0.6)
@@ -1044,8 +1044,8 @@ local LCOL = { br=LC, gms=LC+60, rat=LC+112, pts=LC+182, tot=LC+268 }
 SmallHdr(LCOL.br,  Y.LCOLHDR, "Bracket")
 SmallHdr(LCOL.gms, Y.LCOLHDR, "Games")
 SmallHdr(LCOL.rat, Y.LCOLHDR, "Rating")
-SmallHdr(LCOL.pts, Y.LCOLHDR, "Reward AP")
-SmallHdr(LCOL.tot, Y.LCOLHDR, "Total AP")
+SmallHdr(LCOL.pts, Y.LCOLHDR, "Reward")
+SmallHdr(LCOL.tot, Y.LCOLHDR, "Total Arena Points")
 MakeLine(calcPanel, Y.LLINE2, CW, LC)
 
 local function LiveRow(y, label)
@@ -1064,7 +1064,7 @@ MakeLine(calcPanel, Y.LLINE3, CW, LC)
 
 local apLbl = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 apLbl:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", LC, Y.LBANKED)
-apLbl:SetText("Banked AP:"); apLbl:SetTextColor(0.8, 0.8, 0.8)
+apLbl:SetText("Arena Points:"); apLbl:SetTextColor(0.8, 0.8, 0.8)
 local apInlineVal = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 apInlineVal:SetPoint("LEFT", apLbl, "RIGHT", 8, 0); apInlineVal:SetText("--")
 
@@ -1131,11 +1131,11 @@ MakeLine(calcPanel, Y.TLINE, CW, LC)
 MakeHeader(calcPanel, Y.THEAD, "Rating Target", LC)
 MakeLine(calcPanel, Y.TLINE2, CW, LC)
 
-SmallHdr(CALC.lbl,  Y.TINPUT + 10, "AP Goal")
+SmallHdr(CALC.lbl,  Y.TINPUT + 10, "Arena Points Goal")
 
 local targetLbl = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 targetLbl:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", CALC.lbl, Y.TINPUT)
-targetLbl:SetText("Target AP:"); targetLbl:SetTextColor(0.8, 0.8, 0.8)
+targetLbl:SetText("Arena Points:"); targetLbl:SetTextColor(0.8, 0.8, 0.8)
 
 local targetResultFS = calcPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 targetResultFS:SetPoint("TOPLEFT", calcPanel, "TOPLEFT", LC, Y.TRES)
@@ -1985,6 +1985,14 @@ do
                         GameTooltip:Show()
                     end)
                     iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    iconBtn:SetScript("OnClick", function(self, btn)
+                        if IsShiftKeyDown() then
+                            local _, link = GetItemInfo(capID)
+                            if link and ChatEdit_InsertLink then
+                                ChatEdit_InsertLink(link)
+                            end
+                        end
+                    end)
                 end
             end
             cy = cy - (IC_SZ + 4)
@@ -2006,7 +2014,7 @@ do
             cLbl:SetText("|cffAAAAAA"..def.slot.."|r")
             local apLbl = ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
             apLbl:SetPoint("TOPLEFT", ovCnt,"TOPLEFT", 82, cy)
-            apLbl:SetText(string.format("|cff%s%d AP|r", aMet and "FFD700" or "FF6666", ap))
+            apLbl:SetText(string.format("|cff%s%d Arena Points|r", aMet and "FFD700" or "FF6666", ap))
             if rating > 0 then
                 local rLbl = ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
                 rLbl:SetPoint("TOPLEFT", ovCnt,"TOPLEFT", 155, cy)
@@ -2104,6 +2112,14 @@ do
                         GameTooltip:Show()
                     end)
                     iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                    iconBtn:SetScript("OnClick", function(self, btn)
+                        if IsShiftKeyDown() then
+                            local _, link = GetItemInfo(capID)
+                            if link and ChatEdit_InsertLink then
+                                ChatEdit_InsertLink(link)
+                            end
+                        end
+                    end)
                     col = col + 1
                     if col >= WPER_ROW then col = 0; rowY = rowY - WCELL_W end
                 end
@@ -2192,6 +2208,14 @@ do
                 GameTooltip:Show()
             end)
             rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            rowBtn:SetScript("OnClick", function(self, btn)
+                if IsShiftKeyDown() then
+                    local _, link = GetItemInfo(capturedID)
+                    if link and ChatEdit_InsertLink then
+                        ChatEdit_InsertLink(link)
+                    end
+                end
+            end)
             cy = cy - (HICON + 2)
         end
 
@@ -2404,7 +2428,7 @@ do
     -- ================================================================
     SwitchPage = function(name)
         ovSection = name
-        local hasSeasons=(name=="Arena Gear" or name=="Weapons" or name=="Honor Gear")
+        local hasSeasons=(name=="Arena Gear" or name=="Weapons")
         if hasSeasons then ovS1Btn:Show(); ovS2Btn:Show() else ovS1Btn:Hide(); ovS2Btn:Hide() end
         if name=="Arena Gear" then ovClassBtn:Show() else ovClassBtn:Hide() end
         ovScr:SetVerticalScroll(0)
@@ -2420,23 +2444,24 @@ do
             end
             BuildWeaponsContent()
         elseif name=="Honor Gear" then
+            local savedSeason = ovSeason  -- preserve caller's season for Arena Gear / Weapons
+            ovSeason = 2                  -- Honor Gear only has S2 data
             local _,cf=UnitClass("player")
             local cm={WARRIOR="Warrior",PALADIN="Paladin",HUNTER="Hunter",ROGUE="Rogue",
                       PRIEST="Priest",SHAMAN="Shaman",MAGE="Mage",WARLOCK="Warlock",DRUID="Druid"}
             ovClass=cm[cf or ""] or "Warrior"; ovClassBtn:SetText(ovClass)
-            for _,list in ipairs({S1_HONOR_UNIVERSAL,S2_HONOR_UNIVERSAL}) do
+            for _,list in ipairs({S2_HONOR_UNIVERSAL}) do
                 for _,slot in ipairs(list) do
                     for _,item in ipairs(slot.items) do GetItemInfo(item.id) end
                 end
             end
-            for _,byArmor in ipairs({S1_HONOR_BYARMOR,S2_HONOR_BYARMOR}) do
-                for _,armorList in pairs(byArmor) do
-                    for _,slot in ipairs(armorList) do
-                        for _,item in ipairs(slot.items) do GetItemInfo(item.id) end
-                    end
+            for _,armorList in pairs(S2_HONOR_BYARMOR) do
+                for _,slot in ipairs(armorList) do
+                    for _,item in ipairs(slot.items) do GetItemInfo(item.id) end
                 end
             end
             BuildHonorContent()
+            ovSeason = savedSeason        -- restore so Arena Gear / Weapons keep their season
         elseif name=="CC/DR Table" then
             BuildDRContent()
         elseif name=="Help" then
