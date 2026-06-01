@@ -2504,17 +2504,19 @@ do
 
     local function GetResilienceRating()
         if not GetCombatRating then return 0 end
-        -- Try both names; the Anniversary engine may expose either
-        local id = CR("CR_CRIT_TAKEN_SPELL", 17)
-        local v  = GetCombatRating(id) or 0
-        if v == 0 then
-            -- Secondary attempt with other known IDs (15, 35, 36)
-            for _, alt in ipairs({15, 35, 36}) do
-                local w = GetCombatRating(alt) or 0
-                if w > 0 then return w end
+        -- Valid range confirmed 1-32 in TBC Anniversary client.
+        -- Try all three crit-taken IDs; use pcall to skip any out-of-range ones.
+        for _, id in ipairs({
+            CR("CR_CRIT_TAKEN_SPELL", 17),
+            CR("CR_CRIT_TAKEN_RANGED", 16),
+            CR("CR_CRIT_TAKEN_MELEE", 15),
+        }) do
+            if type(id) == "number" and id >= 1 and id <= 32 then
+                local ok, v = pcall(GetCombatRating, id)
+                if ok and (v or 0) > 0 then return v end
             end
         end
-        return v
+        return 0
     end
     local function GetSpellDmgBonus()
         if not GetSpellBonusDamage then return 0 end
