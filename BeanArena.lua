@@ -63,7 +63,12 @@
 --         |             Fix nil crash: add missing SLOT_DEFS, EQUIP_TO_SLOT, IC_SZ,
 --         |             IC_CELL, SL_W constants required by BuildArenaContent
 -- v1.0    | 2026-05-22 | Public release — CurseForge
--- CURRENT: v1.0
+-- v1.1    | 2026-06-01 | My Gear: renamed from Char Plan; paper-doll layout (18px icons),
+--         |             smart PvP indicators (ReadyCheck textures), center stats panel,
+--         |             built-in char dropdown in the My Gear panel
+-- v1.2    | 2026-06-01 | Team BGs: party honor+marks sharing via addon messages,
+--         |             Team BGs menu page, /ba bgshare, /ba bgprint
+-- CURRENT: v1.2
 -- ============================================================
 
 -- ============================================================
@@ -85,6 +90,8 @@ local BA_VERSION = (function()
     if v:sub(1, 1) ~= "@" then return v end
     return (GetAddOnMetadata and GetAddOnMetadata("BeanArena", "Version")) or "dev"
 end)()
+local BA_MSG_PREFIX    = "BeanArena"
+local versionWarnShown = false
 
 -- Character identity (populated on PLAYER_LOGIN)
 local CHAR_NAME, CHAR_REALM
@@ -124,12 +131,21 @@ local function SnapshotCharData()
     local key = CHAR_NAME .. "-" .. CHAR_REALM
     local r2,r3,r5,g2,g3,g5 = GetLiveRatings()
     local marks = GetPvPMarkCounts and GetPvPMarkCounts() or {}
+    -- Save equipped gear links so My Gear can show them when viewing this alt
+    local gearLinks = {}
+    if GetInventoryItemLink then
+        for slotID = 1, 18 do
+            local link = GetInventoryItemLink("player", slotID)
+            if link then gearLinks[slotID] = link end
+        end
+    end
     local snap = {
         name         = CHAR_NAME,
         realm        = CHAR_REALM,
         arenaPoints  = GetCurrentArenaPoints(),
         honor        = GetCurrentHonor(),
         marks        = marks,
+        gearLinks    = gearLinks,
         r2=r2, r3=r3, r5=r5, g2=g2, g3=g3, g5=g5,
         timestamp    = time(),
     }
@@ -914,7 +930,8 @@ minimapButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 -- ============================================================
 local OpenBeanArena, OpenCommands, frame, cFrame, SetupPVPHook
 local charViewFrame
-local BeanArena_RefreshRefFrame, BeanArena_OpenRefFrame, BeanArena_RebuildRefPage
+local BeanArena_RefreshRefFrame, BeanArena_OpenRefFrame, BeanArena_RebuildRefPage, BeanArena_RefreshCharPlan
+local BeanArena_RefreshTeamBGPage
 local BeanArena_RefreshFrame, BeanArena_RefreshManual
 
 -- ============================================================
@@ -1190,7 +1207,7 @@ MakeLine(calcPanel, Y.TLINE3, CW, LC)
 
 -- ── Row 1: Arena Gear | Weapons | Honor Gear ──────────────────────────
 -- ── Menu dropdown (top-left of frame) ──────────────────────────────
-local MENU_SECTIONS = {"Calculator","Honor","Arena Gear","Weapons","Honor Gear","CC/DR Table","Help"}
+local MENU_SECTIONS = {"Calculator","Honor","Arena Gear","Weapons","Honor Gear","My Gear","Team BGs","CC/DR Table","Help"}
 local mainMenuBtn = CreateFrame("Button", "BeanArenaMenuBtn", frame, "UIPanelButtonTemplate")
 mainMenuBtn:SetSize(120, 22)
 mainMenuBtn:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -8)
@@ -1317,6 +1334,9 @@ local COMMANDS_LIST = {
     { cmd="/ba dr [class]",     desc="CC/DR window or class CC list"   },
     { cmd="/ba gear",           desc="Arena gear costs window"         },
     { cmd="/ba hgear",          desc="Honor gear costs window"         },
+    { cmd="/ba plan",           desc="My Gear — PvP gear status view"  },
+    { cmd="/ba bgshare",        desc="Share your honor+marks with party" },
+    { cmd="/ba bgprint",        desc="Print full party BG stats to chat" },
     { cmd="/ba info",           desc="Info window"                     },
     { cmd="/ba chars",          desc="Character viewer"                },
     { cmd="/ba alts",              desc="Print all alt PvP snapshots to chat"  },
@@ -1683,6 +1703,48 @@ end
 -- Single-window content panel, switched via Menu dropdown.
 -- Sections: Calculator | Honor | Arena Gear | Weapons | Honor Gear | CC/DR Table | Help
 -- ============================================================
+-- ── My Gear slot layout (paper-doll style, used inside the do block) ────
+local GEAR_LAYOUT = {
+    { id=1,  col="L", row=1, name="Head"      },
+    { id=2,  col="L", row=2, name="Neck"      },
+    { id=3,  col="L", row=3, name="Shoulders" },
+    { id=15, col="L", row=4, name="Back"      },
+    { id=5,  col="L", row=5, name="Chest"     },
+    { id=9,  col="L", row=6, name="Bracers"   },
+    { id=6,  col="L", row=7, name="Belt"      },
+    { id=10, col="R", row=1, name="Gloves"    },
+    { id=7,  col="R", row=2, name="Legs"      },
+    { id=8,  col="R", row=3, name="Boots"     },
+    { id=11, col="R", row=4, name="Ring 1"    },
+    { id=12, col="R", row=5, name="Ring 2"    },
+    { id=13, col="R", row=6, name="Trinket 1" },
+    { id=14, col="R", row=7, name="Trinket 2" },
+    { id=16, col="B", row=1, name="Main Hand" },
+    { id=17, col="B", row=2, name="Off Hand"  },
+    { id=18, col="B", row=3, name="Ranged"    },
+}
+
+-- SendAddonMessage moved to C_ChatInfo in newer client builds; try both.
+-- Defined before the do block so BuildTeamBGContent (inside do) can call them.
+local function BA_RegisterPrefix(prefix)
+    if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+        C_ChatInfo.RegisterAddonMessagePrefix(prefix)
+    elseif RegisterAddonMessagePrefix then
+        RegisterAddonMessagePrefix(prefix)
+    end
+end
+local function BA_SendAddonMsg(prefix, message, chatType)
+    -- Re-register prefix each call to be safe; registration is idempotent
+    BA_RegisterPrefix(prefix)
+    if C_ChatInfo and C_ChatInfo.SendAddonMessage then
+        C_ChatInfo.SendAddonMessage(prefix, message, chatType)
+    elseif SendAddonMessage then
+        SendAddonMessage(prefix, message, chatType)
+    else
+        print("|cffFF4444[BA]|r Addon messaging unavailable — cannot share stats.")
+    end
+end
+
 do
     local OV_RCW = FW - 4 - 8 - 20  -- 398 px content width inside scroll frame
 
@@ -2384,6 +2446,7 @@ do
                 "Arena Gear — S1/S2 armor icons + AP/rating costs  (S1/S2 + class buttons)\n"..
                 "Weapons — all PvP weapons, relics, off-hands  (S1/S2 toggle)\n"..
                 "Honor Gear — S1/S2 honor costs, auto-detects your class\n"..
+                "My Gear — paper-doll gear view, PvP status per slot, live combat stats\n"..
                 "CC/DR Table — quick reference + full breakdown for all classes\n"..
                 "Help — this guide"},
             {hdr="Arena Point Calculator  ( /ba calc )",body=
@@ -2421,6 +2484,678 @@ do
             cy=cy-10
         end
         ovCnt:SetHeight(math.abs(cy)+20)
+    end
+
+    -- ================================================================
+    -- MY GEAR PAGE  — character-pane style layout
+    -- ================================================================
+
+    -- Which character snapshot is being shown in My Gear (nil = live player)
+    local myGearSnap = nil
+
+    -- PvP stat helpers.
+    -- CR_* globals may be nil at file-load time (before ADDON_LOADED) so all IDs
+    -- are evaluated at CALL time.  Each function checks the WoW global first then
+    -- falls back to the known TBC numeric value.
+    local function CR(global, fallback)
+        local v = rawget(_G, global)
+        return (type(v) == "number" and v > 0) and v or fallback
+    end
+
+    local function GetResilienceRating()
+        if not GetCombatRating then return 0 end
+        -- Try both names; the Anniversary engine may expose either
+        local id = CR("CR_CRIT_TAKEN_SPELL", 17)
+        local v  = GetCombatRating(id) or 0
+        if v == 0 then
+            -- Secondary attempt with other known IDs (15, 35, 36)
+            for _, alt in ipairs({15, 35, 36}) do
+                local w = GetCombatRating(alt) or 0
+                if w > 0 then return w end
+            end
+        end
+        return v
+    end
+    local function GetSpellDmgBonus()
+        if not GetSpellBonusDamage then return 0 end
+        local best = 0
+        for s = 2, 7 do
+            local v = GetSpellBonusDamage(s) or 0
+            if v > best then best = v end
+        end
+        return best
+    end
+    local function GetSpellHealBonus()
+        if GetSpellBonusHealing then return GetSpellBonusHealing() or 0 end
+        return 0
+    end
+    local function GetHitRatingVal()
+        if not GetCombatRating then return 0 end
+        return GetCombatRating(CR("CR_HIT_SPELL", 8)) or 0
+    end
+    local function GetMeleeHitRatingVal()
+        if not GetCombatRating then return 0 end
+        return GetCombatRating(CR("CR_HIT_MELEE", 6)) or 0
+    end
+    local function GetCritRatingVal()
+        if not GetCombatRating then return 0 end
+        return GetCombatRating(CR("CR_CRIT_SPELL", 11)) or 0
+    end
+    local function GetMeleeCritRatingVal()
+        if not GetCombatRating then return 0 end
+        return GetCombatRating(CR("CR_CRIT_MELEE", 9)) or 0
+    end
+    local function GetManaRegen5()
+        if GetManaRegen then return math.floor((GetManaRegen() or 0) * 5) end
+        return 0
+    end
+    local function GetMeleeAPVal()
+        if UnitAttackPower then
+            local base, pos, neg = UnitAttackPower("player")
+            return math.max(0, (base or 0) + (pos or 0) + (neg or 0))
+        end
+        return 0
+    end
+    local function GetRangedAPVal()
+        if UnitRangedAttackPower then
+            local base, pos, neg = UnitRangedAttackPower("player")
+            return math.max(0, (base or 0) + (pos or 0) + (neg or 0))
+        end
+        return 0
+    end
+    local function GetRangedHitRatingVal()
+        if not GetCombatRating then return 0 end
+        return GetCombatRating(CR("CR_HIT_RANGED", 7)) or 0
+    end
+
+    -- Scan tooltip used to detect resilience when GetItemStats is unavailable/wrong key
+    local _resiTT
+    local function ItemHasResilience(link)
+        if not link then return false end
+        -- Try GetItemStats first; iterate keys so naming variations don't matter
+        if GetItemStats then
+            local ok, stats = pcall(function()
+                local t = {}; GetItemStats(link, t); return t
+            end)
+            if ok and stats then
+                for k, v in pairs(stats) do
+                    if type(k) == "string" and k:upper():find("RESIL")
+                       and (tonumber(v) or 0) > 0 then
+                        return true
+                    end
+                end
+            end
+        end
+        -- Fallback: hidden tooltip scan for "Resilience" text
+        if not _resiTT then
+            _resiTT = CreateFrame("GameTooltip", "BeanArenaResiScanTT",
+                                  nil, "GameTooltipTemplate")
+            _resiTT:SetOwner(WorldFrame, "ANCHOR_NONE")
+        end
+        pcall(_resiTT.SetHyperlink, _resiTT, link)
+        for i = 1, (_resiTT:NumLines() or 0) do
+            local line = _G["BeanArenaResiScanTTTextLeft" .. i]
+            if line and (line:GetText() or ""):lower():find("resilience") then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- Returns status code for a slot.
+    -- dismissed overrides pvp_good → marked so users can light-check any slot.
+    local function GetSlotStatus(slotID, link, dismissed)
+        if not link then return "empty" end
+        if ItemHasResilience(link) then
+            if dismissed[slotID] then return "marked" end
+            return "pvp_good"
+        end
+        if dismissed[slotID] then return "marked" end
+        return "pve"
+    end
+
+    -- Draws a WoW ready-check style indicator texture
+    local function DrawStatusIndicator(parent, status, x, y, sz)
+        sz = sz or 14
+        local ic = parent:CreateTexture(nil, "OVERLAY")
+        ic:SetSize(sz, sz)
+        ic:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+        if status == "pvp_good" then
+            -- Bright green checkmark
+            ic:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+            ic:SetVertexColor(0.2, 1.0, 0.2, 1.0)
+        elseif status == "pve" then
+            -- Red X — no resilience, not dismissed
+            ic:SetTexture("Interface\\RaidFrame\\ReadyCheck-NotReady")
+        elseif status == "marked" then
+            -- Light green checkmark — user acknowledged non-pvp slot
+            ic:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+            ic:SetVertexColor(0.55, 0.90, 0.55, 0.85)
+        end
+        return ic
+    end
+
+    local function BuildCharPlanContent()
+        ClearContent()
+
+        local IC     = 18
+        local IC_PAD = 2
+        local IND_SZ = 12
+        local CELL_H = IC + 4
+        local ROWS   = 7
+
+        local SIDE_COL_W = IND_SZ + IC_PAD + IC + 4
+        local CENTER_W   = OV_RCW - SIDE_COL_W * 2
+        local L_ICON_X   = 0
+        local L_IND_X    = IC + IC_PAD
+        local R_ICON_X   = OV_RCW - SIDE_COL_W + IND_SZ + IC_PAD
+        local R_IND_X    = OV_RCW - SIDE_COL_W
+        local C_X        = SIDE_COL_W
+
+        -- Character dropdown at top
+        local ddBtn = CreateFrame("Button", nil, ovCnt, "UIPanelButtonTemplate")
+        ddBtn:SetSize(OV_RCW, 20)
+        ddBtn:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", 0, -2)
+        ddBtn:GetFontString():SetFontObject("GameFontNormalSmall")
+
+        local function UpdateDDText()
+            if myGearSnap == nil then
+                ddBtn:SetText("|cffFFD700" .. (CHAR_NAME or "?") .. " (you)|r")
+            else
+                ddBtn:SetText(myGearSnap.name)
+            end
+        end
+        UpdateDDText()
+
+        local gearCharDD = CreateFrame("Frame", "BeanArenaGearCharDD", UIParent, "UIDropDownMenuTemplate")
+        ddBtn:SetScript("OnClick", function(self)
+            UIDropDownMenu_Initialize(gearCharDD, function()
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = "|cffFFD700" .. (CHAR_NAME or "Current") .. " (you)|r"
+                info.notCheckable = false
+                info.checked = (myGearSnap == nil)
+                info.func = function()
+                    myGearSnap = nil
+                    CloseDropDownMenus()
+                    SwitchPage("My Gear")
+                end
+                UIDropDownMenu_AddButton(info)
+                local chars = BeanArenaDB.chars or {}
+                local rows = {}
+                for _, snap in pairs(chars) do
+                    if type(snap) == "table" and snap.name then
+                        if not (snap.name == CHAR_NAME and snap.realm == CHAR_REALM) then
+                            rows[#rows+1] = snap
+                        end
+                    end
+                end
+                table.sort(rows, function(a,b) return (a.name or "") < (b.name or "") end)
+                for _, snap in ipairs(rows) do
+                    local i = UIDropDownMenu_CreateInfo()
+                    i.text = snap.name .. " |cff888888(" .. (snap.realm or "?") .. ")|r"
+                    i.notCheckable = false
+                    i.checked = (myGearSnap and myGearSnap.name == snap.name)
+                    local capSnap = snap
+                    i.func = function()
+                        myGearSnap = capSnap
+                        CloseDropDownMenus()
+                        SwitchPage("My Gear")
+                    end
+                    UIDropDownMenu_AddButton(i)
+                end
+            end, "MENU")
+            ToggleDropDownMenu(1, nil, gearCharDD, self, 0, -4)
+        end)
+
+        local divTex = ovCnt:CreateTexture(nil, "ARTWORK")
+        divTex:SetSize(OV_RCW, 1); divTex:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", 0, -24)
+        divTex:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+
+        local gearTop = -28
+        local isLive  = (myGearSnap == nil)
+        local dismissed = (BeanArenaCharDB.charPlan and BeanArenaCharDB.charPlan.dismissed) or {}
+
+        local function DrawGearSlot(slotDef, iconX, indicatorX, gy)
+            local slotID = slotDef.id
+            local link, tex
+            if isLive then
+                link = GetInventoryItemLink("player", slotID)
+                tex  = GetInventoryItemTexture("player", slotID)
+            else
+                -- Use saved gear links from the character snapshot
+                link = myGearSnap.gearLinks and myGearSnap.gearLinks[slotID] or nil
+                if link then
+                    local _, _, _, _, _, _, _, _, _, t = GetItemInfo(link)
+                    tex = t
+                end
+            end
+
+            local iconBtn = CreateFrame("Button", nil, ovCnt)
+            iconBtn:SetSize(IC, IC)
+            iconBtn:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", iconX, gy)
+
+            local bg = iconBtn:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints(); bg:SetColorTexture(0.10, 0.10, 0.12, 1)
+
+            local iconTex = iconBtn:CreateTexture(nil, "ARTWORK")
+            iconTex:SetAllPoints()
+            if tex then
+                iconTex:SetTexture(tex)
+            else
+                iconTex:SetTexture("Interface\\PaperDollInfoFrame\\UI-Backpack-EmptySlot")
+                iconTex:SetVertexColor(0.35, 0.35, 0.35, 0.5)
+            end
+            iconBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square")
+
+            local capName = slotDef.name
+            if link then
+                local capLink = link
+                iconBtn:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetHyperlink(capLink)
+                    GameTooltip:Show()
+                end)
+                iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+                iconBtn:SetScript("OnClick", function()
+                    if IsShiftKeyDown() then
+                        local _, iLink = GetItemInfo(capLink)
+                        if iLink and ChatEdit_InsertLink then ChatEdit_InsertLink(iLink) end
+                    end
+                end)
+            else
+                iconBtn:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:SetText("|cff666666" .. capName .. " (empty)|r")
+                    GameTooltip:Show()
+                end)
+                iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            end
+
+            local status  = GetSlotStatus(slotID, link, dismissed)
+            -- For empty slots that have been dismissed, show a light-green check
+            local drawStatus = status
+            if status == "empty" and dismissed[slotID] then drawStatus = "marked" end
+            local indOffY = gy - (IC / 2) + (IND_SZ / 2) - 1
+            DrawStatusIndicator(ovCnt, drawStatus, indicatorX, indOffY, IND_SZ)
+
+            do  -- click area on ALL slots, regardless of status
+                local capID     = slotID
+                local capStatus = drawStatus   -- use the display status, not raw status
+                local clickArea = CreateFrame("Button", nil, ovCnt)
+                clickArea:SetSize(IND_SZ + 4, IND_SZ + 4)
+                clickArea:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", indicatorX - 2, indOffY + 2)
+                clickArea:SetScript("OnClick", function()
+                    BeanArenaCharDB.charPlan = BeanArenaCharDB.charPlan or { dismissed = {} }
+                    if BeanArenaCharDB.charPlan.dismissed[capID] then
+                        BeanArenaCharDB.charPlan.dismissed[capID] = nil
+                    else
+                        BeanArenaCharDB.charPlan.dismissed[capID] = true
+                    end
+                    SwitchPage("My Gear")
+                end)
+                clickArea:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    if capStatus == "pvp_good" then
+                        GameTooltip:SetText("|cff00FF00PvP Item|r\n|cffAAAAAAClick to light-check|r")
+                    elseif capStatus == "pve" then
+                        GameTooltip:SetText("|cffFF6666No Resilience|r\n|cffAAAAAAPvE item — click to mark as OK|r")
+                    elseif capStatus == "marked" then
+                        GameTooltip:SetText("|cff88FF88Marked OK|r\n|cffAAAAAAClick to un-mark|r")
+                    else
+                        GameTooltip:SetText("|cff666666Empty slot|r\n|cffAAAAAAClick to mark as intentionally empty|r")
+                    end
+                    GameTooltip:Show()
+                end)
+                clickArea:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            end
+        end
+
+        -- Left column
+        for _, slotDef in ipairs(GEAR_LAYOUT) do
+            if slotDef.col == "L" then
+                local gy = gearTop - (slotDef.row - 1) * (CELL_H + 2)
+                DrawGearSlot(slotDef, L_ICON_X, L_IND_X, gy)
+            end
+        end
+
+        -- Right column
+        for _, slotDef in ipairs(GEAR_LAYOUT) do
+            if slotDef.col == "R" then
+                local gy = gearTop - (slotDef.row - 1) * (CELL_H + 2)
+                DrawGearSlot(slotDef, R_ICON_X, R_IND_X, gy)
+            end
+        end
+
+        -- Center stats panel
+        local sx = C_X + 4
+        local sy = gearTop - 2
+        local SW = CENTER_W - 8
+
+        local function StatHdr(txt)
+            local f = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            f:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", sx, sy)
+            f:SetText("|cff00CCFF" .. txt .. "|r"); f:SetWidth(SW)
+            sy = sy - 14
+        end
+        local function StatDiv()
+            local d = ovCnt:CreateTexture(nil, "ARTWORK")
+            d:SetSize(SW, 1); d:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", sx, sy - 1)
+            d:SetColorTexture(0.25, 0.25, 0.25, 0.8); sy = sy - 5
+        end
+        local function StatRow(label, value, col)
+            local lbl = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            lbl:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", sx, sy)
+            lbl:SetText("|cff888888" .. label .. "|r")
+            local val = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            val:SetPoint("TOPRIGHT", ovCnt, "TOPLEFT", sx + SW, sy)
+            val:SetJustifyH("RIGHT")
+            val:SetText("|cff" .. (col or "EEEEEE") .. tostring(value) .. "|r")
+            sy = sy - 13
+        end
+
+        if isLive then
+            StatHdr("PvP Stats")
+            StatDiv()
+            StatRow("Resilience",  GetResilienceRating(),   "FF9900")
+            StatDiv()
+            StatRow("Spell Dmg",   GetSpellDmgBonus(),      "88CCFF")
+            StatRow("Healing",     GetSpellHealBonus(),     "00EE88")
+            StatRow("Spell Hit",   GetHitRatingVal(),       "FFD700")
+            StatRow("Spell Crit",  GetCritRatingVal(),      "FFD700")
+            StatRow("Mana /5s",    GetManaRegen5(),         "88FFFF")
+            StatDiv()
+            StatRow("Melee AP",    GetMeleeAPVal(),         "FF8844")
+            StatRow("Melee Hit",   GetMeleeHitRatingVal(),  "FFD700")
+            StatRow("Melee Crit",  GetMeleeCritRatingVal(), "FFD700")
+            StatDiv()
+            StatRow("Ranged AP",   GetRangedAPVal(),        "FF8844")
+            StatRow("Ranged Hit",  GetRangedHitRatingVal(), "FFD700")
+        else
+            StatHdr(myGearSnap.name)
+            StatDiv()
+            local ts = myGearSnap.lastSeen and date("%Y-%m-%d", myGearSnap.lastSeen) or "?"
+            StatRow("Last Seen",  ts,                            "888888")
+            StatRow("Arena Pts",  myGearSnap.arenaPoints or 0,  "88FF88")
+            StatRow("Honor",      myGearSnap.honor or 0,        "FFD700")
+            StatDiv()
+            StatRow("2v2",        myGearSnap.r2 or 0,           "AADDFF")
+            StatRow("3v3",        myGearSnap.r3 or 0,           "AADDFF")
+            sy = sy - 6
+            local noteFS = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            noteFS:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", sx, sy)
+            noteFS:SetWidth(SW); noteFS:SetJustifyH("CENTER")
+            noteFS:SetText("|cff555555Gear from last\nlogin snapshot.|r")
+        end
+
+        -- Bottom row: weapon slots
+        local bottomY  = gearTop - ROWS * (CELL_H + 2) - 4
+        local wepXPositions = {
+            L_ICON_X,
+            C_X + (CENTER_W / 2) - (IC / 2),
+            R_ICON_X,
+        }
+        local wepIndPositions = {
+            L_IND_X,
+            C_X + (CENTER_W / 2) - (IC / 2) + IC + IC_PAD,
+            R_IND_X,
+        }
+        local wi = 1
+        for _, slotDef in ipairs(GEAR_LAYOUT) do
+            if slotDef.col == "B" then
+                DrawGearSlot(slotDef, wepXPositions[wi], wepIndPositions[wi], bottomY)
+                wi = wi + 1
+            end
+        end
+
+        -- Legend
+        local legendY = bottomY - CELL_H - 6
+        local function LegendItem(lx, status, label)
+            DrawStatusIndicator(ovCnt, status, lx, legendY, 10)
+            local lf = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            lf:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", lx + 12, legendY + 1)
+            lf:SetText("|cff777777" .. label .. "|r")
+        end
+        LegendItem(0,            "pvp_good", "Good")
+        LegendItem(60,           "pve",      "No Resil")
+        LegendItem(130,          "marked",   "Marked OK")
+
+        -- ── Stats section below legend ───────────────────────────────────
+        local COL_W = OV_RCW / 2
+        local bsY   = legendY - 22
+
+        local function BsHdr(txt)
+            local f = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            f:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", 0, bsY)
+            f:SetText("|cff00CCFF" .. txt .. "|r")
+            bsY = bsY - 15
+            local d = ovCnt:CreateTexture(nil, "ARTWORK")
+            d:SetSize(OV_RCW, 1); d:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", 0, bsY)
+            d:SetColorTexture(0.3, 0.3, 0.3, 0.5); bsY = bsY - 6
+        end
+        local function BsRow(ox, label, value, color)
+            local lbl = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            lbl:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", ox, bsY)
+            lbl:SetText("|cff888888" .. label .. "|r")
+            local val = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            val:SetPoint("TOPRIGHT", ovCnt, "TOPLEFT", ox + COL_W - 4, bsY)
+            val:SetJustifyH("RIGHT")
+            val:SetText("|cff" .. (color or "EEEEEE") .. tostring(value) .. "|r")
+        end
+        local function BsPair(l1, v1, c1, l2, v2, c2)
+            BsRow(0,     l1, v1, c1)
+            BsRow(COL_W, l2, v2, c2)
+            bsY = bsY - 13
+        end
+
+        if isLive then
+            BsHdr("Character Stats")
+            local sta = UnitStat and (UnitStat("player", 3)) or 0
+            local str = UnitStat and (UnitStat("player", 1)) or 0
+            local agi = UnitStat and (UnitStat("player", 2)) or 0
+            local int = UnitStat and (UnitStat("player", 4)) or 0
+            local spi = UnitStat and (UnitStat("player", 5)) or 0
+            BsPair("Resilience",  GetResilienceRating(),   "FF9900",
+                   "Stamina",     sta,                     "FFFFFF")
+            BsPair("Spell Power", GetSpellDmgBonus(),      "88CCFF",
+                   "Healing",     GetSpellHealBonus(),     "00EE88")
+            BsPair("Melee AP",    GetMeleeAPVal(),         "FF8844",
+                   "Ranged AP",   GetRangedAPVal(),        "FF8844")
+            BsPair("Strength",    str,                     "FFAAAA",
+                   "Agility",     agi,                     "AAFFAA")
+            BsPair("Intellect",   int,                     "88CCFF",
+                   "Spirit",      spi,                     "AAAAFF")
+            BsPair("Melee Hit",   GetMeleeHitRatingVal(),  "FFD700",
+                   "Spell Hit",   GetHitRatingVal(),       "FFD700")
+            BsPair("Melee Crit",  GetMeleeCritRatingVal(), "FFD700",
+                   "Spell Crit",  GetCritRatingVal(),      "FFD700")
+            BsPair("Mana /5s",    GetManaRegen5(),         "88FFFF",
+                   "Ranged Hit",  GetRangedHitRatingVal(), "FFD700")
+        else
+            BsHdr(myGearSnap.name .. " — Snapshot")
+            local ts = myGearSnap.lastSeen and date("%Y-%m-%d", myGearSnap.lastSeen) or "?"
+            BsRow(0, "Last Seen", ts, "888888"); bsY = bsY - 13
+            BsPair("Arena Pts", myGearSnap.arenaPoints or 0, "88FF88",
+                   "Honor",     myGearSnap.honor or 0,       "FFD700")
+            BsPair("2v2", myGearSnap.r2 or 0, "AADDFF",
+                   "3v3", myGearSnap.r3 or 0, "AADDFF")
+        end
+
+        ovCnt:SetHeight(math.abs(bsY) + 20)
+    end
+
+    -- ================================================================
+    -- TEAM BGS PAGE
+    -- ================================================================
+    BeanArena_RefreshTeamBGPage = nil  -- forward decl, assigned below
+
+    local function BuildTeamBGContent()
+        ClearContent()
+        local cy  = -2
+        local PAD = 4
+        local fmt = BreakUpLargeNumbers or tostring
+
+        -- ── Buttons ───────────────────────────────────────────────
+        local shareBtn = CreateFrame("Button", nil, ovCnt, "UIPanelButtonTemplate")
+        shareBtn:SetSize(110, 22)
+        shareBtn:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", 0, cy)
+        shareBtn:GetFontString():SetFontObject("GameFontNormalSmall")
+        shareBtn:SetText("Share Mine")
+        shareBtn:SetScript("OnClick", function()
+            local fmt   = BreakUpLargeNumbers or tostring
+            local honor = GetCurrentHonor()
+            local marks = GetPvPMarkCounts()
+            local name  = CHAR_NAME or UnitName("player") or "Me"
+            local msg   = string.format("[BA] %s - Honor: %s  AV:%d WSG:%d AB:%d EotS:%d",
+                name, fmt(honor),
+                marks.AV or 0, marks.WSG or 0, marks.AB or 0, marks.EotS or 0)
+            local channel = IsInGroup() and "PARTY" or "SAY"
+            SendChatMessage(msg, channel)
+        end)
+
+        local printBtn = CreateFrame("Button", nil, ovCnt, "UIPanelButtonTemplate")
+        printBtn:SetSize(110, 22)
+        printBtn:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", 118, cy)
+        printBtn:GetFontString():SetFontObject("GameFontNormalSmall")
+        printBtn:SetText("Print Party")
+        printBtn:SetScript("OnClick", function()
+            if not IsInGroup() then
+                print("|cffFFD700[BA]|r Not in a party.")
+                return
+            end
+            -- Print self first (player unit is not in party1..N)
+            local selfMarksP = GetPvPMarkCounts()
+            local selfName = CHAR_NAME or UnitName("player") or "Me"
+            SendChatMessage(string.format(
+                "[BA] %s - Honor: %s  AV:%d WSG:%d AB:%d EotS:%d",
+                selfName, fmt(GetCurrentHonor()),
+                selfMarksP.AV or 0, selfMarksP.WSG or 0,
+                selfMarksP.AB or 0, selfMarksP.EotS or 0
+            ), "PARTY")
+            -- Print other party members
+            local numMembers = GetNumGroupMembers()
+            for i = 1, numMembers do
+                local unit = "party"..i
+                local memberName = UnitName(unit)
+                if memberName then
+                    local shortName = memberName:match("^([^%-]+)") or memberName
+                    local data = BeanArenaDB.teamBG and BeanArenaDB.teamBG[shortName]
+                    if data then
+                        SendChatMessage(string.format(
+                            "[BA] %s - Honor: %s  AV:%d WSG:%d AB:%d EotS:%d",
+                            shortName, fmt(data.honor), data.AV, data.WSG, data.AB, data.EotS
+                        ), "PARTY")
+                    else
+                        SendChatMessage(string.format(
+                            "[BA] %s: BeanArena not installed", shortName
+                        ), "PARTY")
+                    end
+                end
+            end
+        end)
+
+        cy = cy - 28
+
+        -- ── Divider + column headers ──────────────────────────────
+        local function TBLine()
+            local d = ovCnt:CreateTexture(nil, "ARTWORK")
+            d:SetSize(OV_RCW, 1); d:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", 0, cy - 2)
+            d:SetColorTexture(0.3, 0.3, 0.3, 0.5); cy = cy - 8
+        end
+        local COL = { name=0, honor=130, av=230, wsg=258, ab=286, eots=314, age=350 }
+        local function CHdr(x, t)
+            local f = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            f:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", x, cy)
+            f:SetText("|cffAAAAAA"..t.."|r")
+        end
+        TBLine()
+        CHdr(COL.name,  "Name")
+        CHdr(COL.honor, "Honor")
+        CHdr(COL.av,    "AV")
+        CHdr(COL.wsg,   "WSG")
+        CHdr(COL.ab,    "AB")
+        CHdr(COL.eots,  "EotS")
+        CHdr(COL.age,   "Updated")
+        cy = cy - 14
+        TBLine()
+
+        -- ── Not in party guard ────────────────────────────────────
+        if not IsInGroup() then
+            local nf = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            nf:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", PAD, cy)
+            nf:SetText("|cff888888Not in a party.|r")
+            ovCnt:SetHeight(math.abs(cy) + 20)
+            return
+        end
+
+        -- ── Build rows ────────────────────────────────────────────
+        local myName = CHAR_NAME or UnitName("player") or ""
+        local baRows, noBARows = {}, {}
+        local numMembers = GetNumGroupMembers()
+
+        for i = 1, numMembers do
+            local memberName = UnitName("party"..i)
+            if memberName then
+                local shortName = memberName:match("^([^%-]+)") or memberName
+                local data = BeanArenaDB.teamBG and BeanArenaDB.teamBG[shortName]
+                if data then
+                    baRows[#baRows+1] = { name=shortName, data=data }
+                else
+                    noBARows[#noBARows+1] = shortName
+                end
+            end
+        end
+
+        -- Self row uses live data
+        local selfMarks = GetPvPMarkCounts()
+        local selfData = {
+            honor     = GetCurrentHonor(),
+            AV        = selfMarks.AV   or 0,
+            WSG       = selfMarks.WSG  or 0,
+            AB        = selfMarks.AB   or 0,
+            EotS      = selfMarks.EotS or 0,
+            timestamp = time(),
+        }
+        table.sort(baRows, function(a,b) return (a.data.honor or 0) > (b.data.honor or 0) end)
+
+        local function DrawRow(name, data, isMe)
+            local nameCol = isMe and "|cffFFD700"..name.."|r" or "|cffCCCCCC"..name.."|r"
+            local function RF(x, t, col)
+                local f = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                f:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", x, cy)
+                f:SetText(col and ("|cff"..col..t.."|r") or t)
+            end
+            local age = data.timestamp and (time() - data.timestamp) or 0
+            local ageStr = age < 10 and "just now" or (age.."s ago")
+            RF(COL.name,  nameCol)
+            RF(COL.honor, fmt(data.honor),    "FFD700")
+            RF(COL.av,    tostring(data.AV),  "AAAAAA")
+            RF(COL.wsg,   tostring(data.WSG), "AAAAAA")
+            RF(COL.ab,    tostring(data.AB),  "AAAAAA")
+            RF(COL.eots,  tostring(data.EotS),"AAAAAA")
+            RF(COL.age,   ageStr,             "555555")
+            cy = cy - 16
+        end
+
+        DrawRow(myName, selfData, true)
+        for _, row in ipairs(baRows) do
+            DrawRow(row.name, row.data, false)
+        end
+        for _, name in ipairs(noBARows) do
+            local f = ovCnt:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            f:SetPoint("TOPLEFT", ovCnt, "TOPLEFT", 0, cy)
+            f:SetWidth(OV_RCW)
+            f:SetText("|cff555555"..name..": BeanArena not installed|r")
+            cy = cy - 16
+        end
+
+        TBLine()
+        ovCnt:SetHeight(math.abs(cy) + 20)
+    end
+
+    BeanArena_RefreshTeamBGPage = function()
+        if refFrame:IsShown() and ovSection == "Team BGs" then
+            BuildTeamBGContent()
+        end
     end
 
     -- ================================================================
@@ -2462,6 +3197,16 @@ do
             end
             BuildHonorContent()
             ovSeason = savedSeason        -- restore so Arena Gear / Weapons keep their season
+        elseif name=="My Gear" then
+            -- Pre-cache alt's items so icons and tooltips load
+            if myGearSnap and myGearSnap.gearLinks then
+                for _, link in pairs(myGearSnap.gearLinks) do
+                    GetItemInfo(link)
+                end
+            end
+            BuildCharPlanContent()
+        elseif name=="Team BGs" then
+            BuildTeamBGContent()
         elseif name=="CC/DR Table" then
             BuildDRContent()
         elseif name=="Help" then
@@ -2510,13 +3255,19 @@ do
     end
 
     BeanArena_RefreshRefFrame = function()
-        -- Only Honor live-updates on the 5-second ticker (it refreshes existing
-        -- FontStrings in-place).  All other pages are static until the user
-        -- switches sections or item data arrives — rebuilding them on every tick
-        -- accumulates hidden frames (WoW TBC has no Destroy) and causes a
-        -- GetChildren() stack overflow after ~50 rebuilds.
+        -- Only Honor and Team BGs live-update on the 5-second ticker.
+        -- All other pages are static to avoid GetChildren() stack overflow.
         if refFrame:IsShown() and ovSection == "Honor" then
             RefreshHonorPage()
+        elseif refFrame:IsShown() and ovSection == "Team BGs" then
+            BeanArena_RefreshTeamBGPage()
+        end
+    end
+
+    -- Rebuilds My Gear when UNIT_INVENTORY_CHANGED fires for "player".
+    BeanArena_RefreshCharPlan = function()
+        if refFrame:IsShown() and ovSection == "My Gear" then
+            SwitchPage("My Gear")
         end
     end
 
@@ -2819,6 +3570,54 @@ SlashCmdList["BEANARENA"] = function(msg)
         BeanArena_OpenRefFrame("Arena Gear")
     elseif cmd == "hgear" or cmd == "honorgear" then
         BeanArena_OpenRefFrame("Honor Gear")
+    elseif cmd == "plan" then
+        BeanArena_OpenRefFrame("My Gear")
+
+    -- ── /ba bgshare  /ba bgprint ──────────────────────────────
+    elseif cmd == "bgshare" then
+        local fmtS  = BreakUpLargeNumbers or tostring
+        local honor = GetCurrentHonor()
+        local marks = GetPvPMarkCounts()
+        local name  = CHAR_NAME or UnitName("player") or "Me"
+        local msg   = string.format("[BA] %s - Honor: %s  AV:%d WSG:%d AB:%d EotS:%d",
+            name, fmtS(honor),
+            marks.AV or 0, marks.WSG or 0, marks.AB or 0, marks.EotS or 0)
+        local channel = IsInGroup() and "PARTY" or "SAY"
+        SendChatMessage(msg, channel)
+
+    elseif cmd == "bgprint" then
+        if not IsInGroup() then
+            print(BA .. " Not in a party.")
+        else
+            local fmtN = BreakUpLargeNumbers or tostring
+            -- Print self first
+            local selfMarksC = GetPvPMarkCounts()
+            local selfNameC  = CHAR_NAME or UnitName("player") or "Me"
+            SendChatMessage(string.format(
+                "[BA] %s - Honor: %s  AV:%d WSG:%d AB:%d EotS:%d",
+                selfNameC, fmtN(GetCurrentHonor()),
+                selfMarksC.AV or 0, selfMarksC.WSG or 0,
+                selfMarksC.AB or 0, selfMarksC.EotS or 0
+            ), "PARTY")
+            -- Print other party members
+            for i = 1, GetNumGroupMembers() do
+                local memberName = UnitName("party"..i)
+                if memberName then
+                    local shortName = memberName:match("^([^%-]+)") or memberName
+                    local data = BeanArenaDB.teamBG and BeanArenaDB.teamBG[shortName]
+                    if data then
+                        SendChatMessage(string.format(
+                            "[BA] %s - Honor: %s  AV:%d WSG:%d AB:%d EotS:%d",
+                            shortName, fmtN(data.honor), data.AV, data.WSG, data.AB, data.EotS
+                        ), "PARTY")
+                    else
+                        SendChatMessage(string.format(
+                            "[BA] %s: BeanArena not installed", shortName
+                        ), "PARTY")
+                    end
+                end
+            end
+        end
     elseif cmd == "weapons" then
         BeanArena_OpenRefFrame("Weapons")
 
@@ -2840,6 +3639,7 @@ SlashCmdList["BEANARENA"] = function(msg)
         print("  |cffFFD700Lookup:|r   calc [#]  target <ap>  honor [slot]  arena [slot]  dr [class]")
         print("  |cffFFD700Lists:|r    slots  slots arena  slots honor")
         print("  |cffFFD700Other:|r    alts  points  marks  reset  help")
+        print("  |cffFFD700BG Team:|r  bgshare  bgprint")
 
     else
         print(BA .. " Unknown: |cffFF4444/ba " .. cmd .. "|r  —  try |cffFFD700/ba help|r")
@@ -2856,8 +3656,7 @@ local itemRefreshPending = false
 -- ============================================================
 -- VERSION BROADCAST  (peer-to-peer via addon message channel)
 -- ============================================================
-local BA_MSG_PREFIX = "BeanArena"
-local versionWarnShown = false
+-- BA_MSG_PREFIX and versionWarnShown declared at top of file (line ~88)
 
 -- Returns true if version string a is strictly newer than b.
 -- Compares up to three dot-separated numeric parts: major.minor.patch
@@ -2874,16 +3673,15 @@ local function VersionIsNewer(a, b)
 end
 
 local function BroadcastVersion()
-    if not RegisterAddonMessagePrefix then return end
-    RegisterAddonMessagePrefix(BA_MSG_PREFIX)
+    BA_RegisterPrefix(BA_MSG_PREFIX)
     local payload = "VERSION:" .. BA_VERSION
     if IsInRaid and IsInRaid() then
-        SendAddonMessage(BA_MSG_PREFIX, payload, "RAID")
+        BA_SendAddonMsg(BA_MSG_PREFIX, payload, "RAID")
     elseif IsInGroup and IsInGroup() then
-        SendAddonMessage(BA_MSG_PREFIX, payload, "PARTY")
+        BA_SendAddonMsg(BA_MSG_PREFIX, payload, "PARTY")
     end
     if IsInGuild and IsInGuild() then
-        SendAddonMessage(BA_MSG_PREFIX, payload, "GUILD")
+        BA_SendAddonMsg(BA_MSG_PREFIX, payload, "GUILD")
     end
 end
 
@@ -2894,9 +3692,9 @@ eFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eFrame:RegisterEvent("UPDATE_BATTLEFIELD_STATUS")
 eFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 eFrame:RegisterEvent("CHAT_MSG_ADDON")
-if RegisterAddonMessagePrefix then
-    RegisterAddonMessagePrefix(BA_MSG_PREFIX)
-end
+eFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
+eFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+BA_RegisterPrefix(BA_MSG_PREFIX)
 
 eFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and type(arg1)=="string" and arg1:lower() == ADDON_NAME:lower() then
@@ -2910,6 +3708,10 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
         if mm.lockDistance == nil then mm.lockDistance = false end
         -- Initialize alt data table
         BeanArenaDB.altData = BeanArenaDB.altData or {}
+        -- Initialize per-character char plan
+        BeanArenaCharDB.charPlan = BeanArenaCharDB.charPlan or { dismissed = {} }
+        -- Team BG sharing — cleared on every load, not persisted
+        BeanArenaDB.teamBG = {}
         -- Restore main frame position
         if DB("frameX") and DB("frameY") then
             frame:ClearAllPoints()
@@ -2955,12 +3757,49 @@ eFrame:SetScript("OnEvent", function(self, event, arg1)
                         theirVersion))
                 end
             end
+            local bgPayload = message:match("^BGDATA:(.+)$")
+            if bgPayload then
+                local honor, av, wsg, ab, eots = bgPayload:match("^(%d+):(%d+):(%d+):(%d+):(%d+)$")
+                if honor then
+                    local senderName = sender:match("^([^%-]+)") or sender
+                    BeanArenaDB.teamBG = BeanArenaDB.teamBG or {}
+                    BeanArenaDB.teamBG[senderName] = {
+                        honor     = tonumber(honor),
+                        AV        = tonumber(av),
+                        WSG       = tonumber(wsg),
+                        AB        = tonumber(ab),
+                        EotS      = tonumber(eots),
+                        timestamp = time(),
+                    }
+                    if BeanArena_RefreshTeamBGPage then
+                        BeanArena_RefreshTeamBGPage()
+                    end
+                end
+            end
         end
     elseif event == "UPDATE_BATTLEFIELD_STATUS" then
         if frame:IsShown() then BeanArena_RefreshFrame() end
     elseif event == "GET_ITEM_INFO_RECEIVED" then
         -- Flag a rebuild so icons finish loading before the overlay rebuilds.
         itemRefreshPending = true
+    elseif event == "UNIT_INVENTORY_CHANGED" then
+        if arg1 == "player" and BeanArena_RefreshCharPlan then
+            BeanArena_RefreshCharPlan()
+        end
+    elseif event == "GROUP_ROSTER_UPDATE" then
+        if BeanArenaDB.teamBG then
+            for name in pairs(BeanArenaDB.teamBG) do
+                local found = false
+                for i = 1, GetNumGroupMembers() do
+                    local memberName = UnitName("party"..i) or UnitName("raid"..i)
+                    if memberName and memberName:match("^([^%-]+)") == name then
+                        found = true; break
+                    end
+                end
+                if not found then BeanArenaDB.teamBG[name] = nil end
+            end
+        end
+        if BeanArena_RefreshTeamBGPage then BeanArena_RefreshTeamBGPage() end
     end
 end)
 
