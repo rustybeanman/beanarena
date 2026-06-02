@@ -3003,15 +3003,26 @@ do
         shareBtn:GetFontString():SetFontObject("GameFontNormalSmall")
         shareBtn:SetText("Share Mine")
         shareBtn:SetScript("OnClick", function()
-            local fmt   = BreakUpLargeNumbers or tostring
-            local honor = GetCurrentHonor()
-            local marks = GetPvPMarkCounts()
-            local name  = CHAR_NAME or UnitName("player") or "Me"
-            local msg   = string.format("[BA] %s - Honor: %s  AV:%d WSG:%d AB:%d EotS:%d",
-                name, fmt(honor),
-                marks.AV or 0, marks.WSG or 0, marks.AB or 0, marks.EotS or 0)
+            local fmt    = BreakUpLargeNumbers or tostring
+            local honor  = GetCurrentHonor()
+            local marks  = GetPvPMarkCounts()
+            local name   = CHAR_NAME or UnitName("player") or "Me"
             local channel = IsInGroup() and "PARTY" or "SAY"
-            SendChatMessage(msg, channel)
+            -- Addon message syncs data to other BeanArena users
+            local payload = string.format("BGDATA:%d:%d:%d:%d:%d",
+                honor, marks.AV or 0, marks.WSG or 0, marks.AB or 0, marks.EotS or 0)
+            BA_SendAddonMsg(BA_MSG_PREFIX, payload, channel)
+            -- Chat message for visible confirmation
+            SendChatMessage(string.format("[BA] %s - Honor: %s  AV:%d WSG:%d AB:%d EotS:%d",
+                name, fmt(honor),
+                marks.AV or 0, marks.WSG or 0, marks.AB or 0, marks.EotS or 0), channel)
+            -- Write own data locally (addon messages not echoed back to sender)
+            BeanArenaDB.teamBG = BeanArenaDB.teamBG or {}
+            BeanArenaDB.teamBG[name] = {
+                honor=honor, AV=marks.AV or 0, WSG=marks.WSG or 0,
+                AB=marks.AB or 0, EotS=marks.EotS or 0, timestamp=time(),
+            }
+            SwitchPage("Team BGs")
         end)
 
         local printBtn = CreateFrame("Button", nil, ovCnt, "UIPanelButtonTemplate")
@@ -3698,7 +3709,7 @@ eFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
 eFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 BA_RegisterPrefix(BA_MSG_PREFIX)
 
-eFrame:SetScript("OnEvent", function(self, event, arg1)
+eFrame:SetScript("OnEvent", function(self, event, arg1, arg2, arg3, arg4)
     if event == "ADDON_LOADED" and type(arg1)=="string" and arg1:lower() == ADDON_NAME:lower() then
         -- Initialize minimap sub-table with defaults
         BeanArenaDB.minimap = BeanArenaDB.minimap or {}
