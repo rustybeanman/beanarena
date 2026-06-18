@@ -67,7 +67,10 @@
 --         |             Team BGs menu page, /ba bgshare, /ba bgprint
 -- v1.3    | 2026-06-18 | Remove My Gear; fix Team BGs PING auto-sync; remove
 --         |             CC/DR Quick Reference section; dead code cleanup
--- CURRENT: v1.3.0
+-- v1.3.1  | 2026-06-18 | Fix stack overflow: replace ClearContent frame
+--         |             accumulation with fresh-child swap; restrict
+--         |             BeanArena_RebuildRefPage to item pages only
+-- CURRENT: v1.3.1
 -- ============================================================
 
 -- ============================================================
@@ -1688,8 +1691,15 @@ do
     ovScr:SetScrollChild(ovCnt)
 
     local function ClearContent()
-        for _, ch in ipairs({ovCnt:GetChildren()}) do ch:Hide() end
-        for _, r  in ipairs({ovCnt:GetRegions()})  do r:Hide()  end
+        -- Hide the current scroll child and replace with a fresh empty frame.
+        -- Hiding + replacing avoids calling GetChildren/GetRegions on an ever-growing
+        -- list of accumulated hidden objects, which causes a stack overflow after many
+        -- page switches.
+        ovCnt:Hide()
+        ovCnt = CreateFrame("Frame", nil, ovScr)
+        ovCnt:SetWidth(OV_RCW)
+        ovCnt:SetHeight(10)
+        ovScr:SetScrollChild(ovCnt)
     end
 
     local SwitchPage  -- forward decl
@@ -2620,10 +2630,13 @@ do
         end
     end
 
-    -- Called ONCE when GET_ITEM_INFO_RECEIVED fires, to refresh icon textures on
-    -- non-Honor pages (item info wasn't cached on first build so icons were blank).
+    -- Called when GET_ITEM_INFO_RECEIVED fires so item icons render after the
+    -- server responds with data.  Only the three gear pages display item icons;
+    -- rebuilding CC/DR Table, Help, Honor, or Team BGs from this event would
+    -- accumulate hidden frames each time and eventually overflow the Lua stack.
     BeanArena_RebuildRefPage = function()
-        if refFrame:IsShown() and ovSection ~= "Honor" then
+        if not refFrame:IsShown() then return end
+        if ovSection == "Arena Gear" or ovSection == "Weapons" or ovSection == "Honor Gear" then
             SwitchPage(ovSection)
         end
     end
