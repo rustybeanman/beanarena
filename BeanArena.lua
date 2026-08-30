@@ -81,7 +81,7 @@
 --         |             add S3 Paladin sets; only Rogue Leather still missing
 -- v1.4.3  | 2026-08-30 | Add S3 Rogue Leather (33700-33704); all 17 S3 armor sets
 --         |             now complete
--- CURRENT: v1.4.3
+-- CURRENT: v1.4.4
 -- ============================================================
 
 -- ============================================================
@@ -237,9 +237,9 @@ local ARENA_GEAR_FULL = {
     { slot="Legs",             ap=1550, rating=0    },
     { slot="Chest",            ap=1550, rating=0    },
     { slot="Shoulders",        ap=1245, rating=2000 },
-    { slot="Shield",           ap=1550, rating=1700 },
+    { slot="Shield",           ap=1550, rating=0    },
     { slot="Off-hand Melee",   ap=930,  rating=1700 },
-    { slot="Throwing Weapon",  ap=830,  rating=1700 },
+    { slot="Throwing Weapon",  ap=830,  rating=0    },
     { slot="Main-hand Melee",  ap=2175, rating=1700 },
     { slot="Caster Main-hand", ap=2610, rating=1700 },
     { slot="2H / Main Ranged", ap=3110, rating=1700 },
@@ -445,39 +445,39 @@ local S1_WEAPONS = {
     {slot="Relic — Totem",     key="Totem",          ids={28357,33951,33939}, ap=875,  rating=0   },
 }
 
--- Season 3 (Vengeful Gladiator's) weapons/offhands/relics — PTR vendor dump 2026-08-29
--- rating=0 placeholder; live rating requirements not yet confirmed from PTR
+-- Season 3 (Vengeful Gladiator's) weapons/offhands/relics — PTR vendor dump 2026-08-30
+-- Weapons require 1700 arena rating; wands/thrown/shields/caster off-hands/relics have no rating.
+-- S3 shoulders require 2000 rating (tracked separately in armor set display).
 local S3_WEAPONS = {
-    -- 830 AP — wand, thrown, relics
-    {slot="Wand",              key="Wand",           ids={33764,34066},       ap=830,  rating=0},
+    -- 830 AP — wand, thrown, relics (no rating)
+    {slot="Wand",              key="Wand",           ids={33764,34066,34059}, ap=830,  rating=0},
     {slot="Thrown",            key="Thrown",         ids={33765,34014},       ap=830,  rating=0},
     {slot="Relic — Idol",      key="Idol",           ids={33841,33944,33947}, ap=830,  rating=0},
     {slot="Relic — Totem",     key="Totem",          ids={33843,33941,33953}, ap=830,  rating=0},
-    {slot="Relic — Libram",    key="Libram",         ids={34059},             ap=830,  rating=0},
-    -- 930 AP — off-hands
-    {slot="Off-hand Weapon",   key="Off-Weapon",     ids={33801,34015,34016}, ap=930,  rating=0},
+    {slot="Relic — Libram",    key="Libram",         ids={33842,33938,33950}, ap=830,  rating=0},
+    -- 930 AP — off-hand physical (1700 rating), caster off-hands (no rating), shields (no rating)
+    {slot="Off-hand Weapon",   key="Off-Weapon",     ids={33662,33689,33705,33734,33756,33801,34015,34016}, ap=930,  rating=1700},
     {slot="Off-hand Tome/Orb", key="Off-Tome",       ids={33681,33736,34033}, ap=930,  rating=0},
-    -- 1550 AP — shields
     {slot="Shield",            key="Shield",         ids={33661,33735,33755}, ap=1550, rating=0},
-    -- 2175 AP — 1H physical
-    {slot="1H Dagger",         key="1H-Dagger",      ids={33754,33756},       ap=2175, rating=0},
-    {slot="1H Sword (Phys)",   key="1H-Sword",       ids={33734,33762},       ap=2175, rating=0},
-    {slot="1H Mace (Phys)",    key="1H-Mace",        ids={33662,33733},       ap=2175, rating=0},
-    {slot="1H Axe",            key="1H-Axe",         ids={33669,33689},       ap=2175, rating=0},
-    {slot="1H Fist Weapon",    key="1H-Fist",        ids={33705,33737},       ap=2175, rating=0},
-    -- 2610 AP — 1H caster/heal
-    {slot="1H Caster Sword",   key="1H-SwordCaster", ids={33763},             ap=2610, rating=0},
-    {slot="1H Mace (Heal)",    key="1H-MaceHeal",    ids={33687,33743},       ap=2610, rating=0},
-    -- 3110 AP — 2H and ranged
-    {slot="2H Sword",          key="2H-Sword",       ids={33688},             ap=3110, rating=0},
-    {slot="2H Axe",            key="2H-Axe",         ids={33670},             ap=3110, rating=0},
-    {slot="2H Mace",           key="2H-Mace",        ids={33663},             ap=3110, rating=0},
-    {slot="2H Polearm",        key="2H-Polearm",     ids={33727},             ap=3110, rating=0},
-    {slot="2H Staff (Caster)", key="2H-Staff",       ids={33716,34540},       ap=3110, rating=0},
-    {slot="2H Staff (Feral)",  key="2H-StaffFeral",  ids={33766},             ap=3110, rating=0},
-    {slot="Crossbow",          key="Crossbow",       ids={33006},             ap=3110, rating=0},
-    {slot="Bow",               key="Bow",            ids={34529},             ap=3110, rating=0},
-    {slot="Gun",               key="Gun",            ids={34530},             ap=3110, rating=0},
+    -- 2175 AP — 1H physical (1700 rating)
+    {slot="1H Dagger",         key="1H-Dagger",      ids={33754},             ap=2175, rating=1700},
+    {slot="1H Sword (Phys)",   key="1H-Sword",       ids={33762},             ap=2175, rating=1700},
+    {slot="1H Mace (Phys)",    key="1H-Mace",        ids={33733},             ap=2175, rating=1700},
+    {slot="1H Axe",            key="1H-Axe",         ids={33669},             ap=2175, rating=1700},
+    {slot="1H Fist Weapon",    key="1H-Fist",        ids={33737},             ap=2175, rating=1700},
+    -- 2610 AP — 1H caster/heal (1700 rating)
+    {slot="1H Caster Sword",   key="1H-SwordCaster", ids={33763},             ap=2610, rating=1700},
+    {slot="1H Mace (Heal)",    key="1H-MaceHeal",    ids={33687,33743},       ap=2610, rating=1700},
+    -- 3110 AP — 2H and ranged (1700 rating)
+    {slot="2H Sword",          key="2H-Sword",       ids={33688},             ap=3110, rating=1700},
+    {slot="2H Axe",            key="2H-Axe",         ids={33670},             ap=3110, rating=1700},
+    {slot="2H Mace",           key="2H-Mace",        ids={33663},             ap=3110, rating=1700},
+    {slot="2H Polearm",        key="2H-Polearm",     ids={33727},             ap=3110, rating=1700},
+    {slot="2H Staff (Caster)", key="2H-Staff",       ids={33716},             ap=3110, rating=1700},
+    {slot="2H Staff (Feral)",  key="2H-StaffFeral",  ids={33766,34540},       ap=3110, rating=1700},
+    {slot="Crossbow",          key="Crossbow",       ids={33006},             ap=3110, rating=1700},
+    {slot="Bow",               key="Bow",            ids={34529},             ap=3110, rating=1700},
+    {slot="Gun",               key="Gun",            ids={34530},             ap=3110, rating=1700},
 }
 
 -- S2 Veteran's honor off-pieces by armor type: { id, name, honor, marks }
@@ -1933,7 +1933,7 @@ do
 
     -- Ordered slot list with AP cost and personal-rating gate per season.
     -- apS1/apS2/apS3: arena points required.  ratingS*: personal rating gate (0 = none).
-    -- S3 costs confirmed from PTR vendor dump 2026-08-29; rating gates TBD on live.
+    -- S3 costs confirmed from PTR vendor dump 2026-08-30; S3 shoulders require 2000 rating.
     local SLOT_DEFS = {
         { slot="Head",      apS1=620, apS2=1550, apS3=1550, ratingS1=0,    ratingS2=0,    ratingS3=0    },
         { slot="Shoulders", apS1=495, apS2=1245, apS3=1245, ratingS1=2000, ratingS2=2000, ratingS3=2000 },
@@ -2127,8 +2127,19 @@ do
                     iconTex:SetAllPoints()
                     local _,_,_,_,_,_,_,_,_,iconPath = GetItemInfo(id)
                     iconTex:SetTexture(iconPath or "Interface\Icons\INV_Misc_QuestionMark")
-                    if not (canAfford and ratingMet) then
+                    if not canAfford then
                         iconTex:SetDesaturated(true); iconTex:SetVertexColor(0.55, 0.55, 0.55)
+                    end
+                    if not ratingMet then
+                        local lockBg = iconBtn:CreateTexture(nil, "OVERLAY")
+                        lockBg:SetSize(13, 13)
+                        lockBg:SetPoint("BOTTOMRIGHT", iconBtn, "BOTTOMRIGHT", 0, 0)
+                        lockBg:SetColorTexture(0.65, 0, 0, 0.92)
+                        local lockTxt = iconBtn:CreateFontString(nil, "OVERLAY")
+                        lockTxt:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+                        lockTxt:SetPoint("CENTER", lockBg, "CENTER", 0, 0)
+                        lockTxt:SetText("R")
+                        lockTxt:SetTextColor(1, 0.75, 0.75, 1)
                     end
                     iconBtn:SetHighlightTexture("Interface\Buttons\ButtonHilight-Square")
                     local capID, capWep, capCA, capRM = id, wep, canAfford, ratingMet
@@ -2139,7 +2150,7 @@ do
                         GameTooltip:AddLine(string.format("|cff%s%d Arena Points|r",
                             capCA and "FFD700" or "FF6666", capWep.ap))
                         if capWep.rating > 0 then
-                            GameTooltip:AddLine(string.format("|cff%sRequires %d Rating|r",
+                            GameTooltip:AddLine(string.format("|cff%sRequires %d Arena Rating|r",
                                 capRM and "00FF00" or "FF4444", capWep.rating))
                         else
                             GameTooltip:AddLine("|cff00FF00No Rating Requirement|r")
