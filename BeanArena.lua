@@ -79,7 +79,9 @@
 -- v1.4.2  | 2026-08-30 | Fix Paladin set names all seasons: Aegis→Lamellar (Prot),
 --         |             Vindication→Scaled (Ret), Redemption→Ornamented (Holy);
 --         |             add S3 Paladin sets; only Rogue Leather still missing
--- CURRENT: v1.4.2
+-- v1.4.3  | 2026-08-30 | Add S3 Rogue Leather (33700-33704); all 17 S3 armor sets
+--         |             now complete
+-- CURRENT: v1.4.3
 -- ============================================================
 
 -- ============================================================
@@ -364,6 +366,7 @@ local ARMOR_SET_IDS = {
     ["Vengeful Gladiator's Lamellar"]      = {33695,33696,33697,33698,33699},  -- Paladin Prot
     ["Vengeful Gladiator's Scaled"]        = {33749,33750,33751,33752,33753},  -- Paladin Ret
     ["Vengeful Gladiator's Ornamented"]    = {33722,33723,33724,33725,33726},  -- Paladin Holy
+    ["Vengeful Gladiator's Leather"]       = {33700,33701,33702,33703,33704},  -- Rogue
 }
 
 -- Weapon slot keys each class can equip (used to filter arena weapon list)
