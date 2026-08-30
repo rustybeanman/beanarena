@@ -73,7 +73,10 @@
 -- v1.4.0  | 2026-08-29 | S3 Vengeful Gladiator: S3 season button on Arena Gear
 --         |             and Weapons pages; Mage armor IDs confirmed (PTR dump);
 --         |             8 class sets + most weapons pending full cache-warm re-dump
--- CURRENT: v1.4.0
+-- v1.4.1  | 2026-08-29 | S3 data complete (6-class PTR dump): 13 armor sets, full
+--         |             weapon list (24 slot rows, 43 items); fix Wyrmhide/Ringmail
+--         |             set names; Rogue+Paladin armor IDs pending
+-- CURRENT: v1.4.1
 -- ============================================================
 
 -- ============================================================
@@ -292,12 +295,12 @@ local CLASS_SETS_S2 = {
 local CLASS_SETS_S3 = {
     Warrior  = {"Vengeful Gladiator's Plate"},
     Paladin  = {"Vengeful Gladiator's Redemption", "Vengeful Gladiator's Vindication", "Vengeful Gladiator's Aegis"},
-    Druid    = {"Vengeful Gladiator's Kodohide", "Vengeful Gladiator's Dragonhide", "Vengeful Gladiator's Wildhide"},
+    Druid    = {"Vengeful Gladiator's Kodohide", "Vengeful Gladiator's Dragonhide", "Vengeful Gladiator's Wyrmhide"},
     Hunter   = {"Vengeful Gladiator's Chain"},
     Mage     = {"Vengeful Gladiator's Silk"},
     Priest   = {"Vengeful Gladiator's Mooncloth", "Vengeful Gladiator's Satin"},
     Rogue    = {"Vengeful Gladiator's Leather"},
-    Shaman   = {"Vengeful Gladiator's Mail", "Vengeful Gladiator's Linked", "Vengeful Gladiator's Earthshaker"},
+    Shaman   = {"Vengeful Gladiator's Mail", "Vengeful Gladiator's Linked", "Vengeful Gladiator's Ringmail"},
     Warlock  = {"Vengeful Gladiator's Dreadweave", "Vengeful Gladiator's Felweave"},
 }
 
@@ -341,8 +344,20 @@ local ARMOR_SET_IDS = {
     ["Merciless Gladiator's Vindication"]  = {32041,32043,32039,32040,32042},  -- set 714 Paladin Ret
     ["Merciless Gladiator's Linked"]       = {32031,32033,32029,32030,32032},  -- set 715 Shaman Ele
     ["Merciless Gladiator's Dragonhide"]   = {32057,32059,32060,32056,32058},  -- set 716 Druid Balance
-    -- Season 3 (Vengeful Gladiator's) ── PTR vendor dump 2026-08-29; 8 class sets still uncached
-    ["Vengeful Gladiator's Silk"]          = {33759,33757,33758,33760,33761},  -- Mage (Ontok idx 1-5)
+    -- Season 3 (Vengeful Gladiator's) ── PTR vendor dump 2026-08-29; Rogue+Paladin pending
+    ["Vengeful Gladiator's Chain"]         = {33664,33665,33666,33667,33668},  -- Hunter
+    ["Vengeful Gladiator's Dragonhide"]    = {33671,33672,33673,33674,33675},  -- Druid Balance
+    ["Vengeful Gladiator's Dreadweave"]    = {33676,33677,33678,33679,33680},  -- Warlock 1
+    ["Vengeful Gladiator's Felweave"]      = {33682,33683,33684,33685,33686},  -- Warlock 2
+    ["Vengeful Gladiator's Kodohide"]      = {33690,33691,33692,33693,33694},  -- Druid Heal
+    ["Vengeful Gladiator's Linked"]        = {33706,33707,33708,33709,33710},  -- Shaman Ele
+    ["Vengeful Gladiator's Mail"]          = {33711,33712,33713,33714,33715},  -- Shaman Heal
+    ["Vengeful Gladiator's Mooncloth"]     = {33717,33718,33719,33720,33721},  -- Priest Heal
+    ["Vengeful Gladiator's Plate"]         = {33728,33729,33730,33731,33732},  -- Warrior
+    ["Vengeful Gladiator's Ringmail"]      = {33738,33739,33740,33741,33742},  -- Shaman Enh
+    ["Vengeful Gladiator's Satin"]         = {33744,33745,33746,33747,33748},  -- Priest Shadow
+    ["Vengeful Gladiator's Silk"]          = {33757,33758,33759,33760,33761},  -- Mage
+    ["Vengeful Gladiator's Wyrmhide"]      = {33767,33768,33769,33770,33771},  -- Druid Feral
 }
 
 -- Weapon slot keys each class can equip (used to filter arena weapon list)
@@ -421,15 +436,39 @@ local S1_WEAPONS = {
     {slot="Relic — Totem",     key="Totem",          ids={28357,33951,33939}, ap=875,  rating=0   },
 }
 
--- Season 3 (Vengeful Gladiator's) weapons — PTR vendor dump 2026-08-29
--- Only 5 of ~36 weapon/off-hand/relic entries confirmed. Re-dump at Ontok Shatterhorn
--- after cache warm (see vendor pack notes) to fill remaining 31 slots.
+-- Season 3 (Vengeful Gladiator's) weapons/offhands/relics — PTR vendor dump 2026-08-29
+-- rating=0 placeholder; live rating requirements not yet confirmed from PTR
 local S3_WEAPONS = {
-    {slot="1H Sword (Phys)",   key="1H-Sword",       ids={33762},       ap=2175, rating=0},
-    {slot="2H Sword",          key="2H-Sword",        ids={33688},       ap=3110, rating=0},
-    {slot="2H Axe",            key="2H-Axe",          ids={33670},       ap=3110, rating=0},
-    {slot="2H Mace",           key="2H-Mace",         ids={33663},       ap=3110, rating=0},
-    {slot="2H Polearm",        key="2H-Polearm",      ids={33727},       ap=3110, rating=0},
+    -- 830 AP — wand, thrown, relics
+    {slot="Wand",              key="Wand",           ids={33764,34066},       ap=830,  rating=0},
+    {slot="Thrown",            key="Thrown",         ids={33765,34014},       ap=830,  rating=0},
+    {slot="Relic — Idol",      key="Idol",           ids={33841,33944,33947}, ap=830,  rating=0},
+    {slot="Relic — Totem",     key="Totem",          ids={33843,33941,33953}, ap=830,  rating=0},
+    {slot="Relic — Libram",    key="Libram",         ids={34059},             ap=830,  rating=0},
+    -- 930 AP — off-hands
+    {slot="Off-hand Weapon",   key="Off-Weapon",     ids={33801,34015,34016}, ap=930,  rating=0},
+    {slot="Off-hand Tome/Orb", key="Off-Tome",       ids={33681,33736,34033}, ap=930,  rating=0},
+    -- 1550 AP — shields
+    {slot="Shield",            key="Shield",         ids={33661,33735,33755}, ap=1550, rating=0},
+    -- 2175 AP — 1H physical
+    {slot="1H Dagger",         key="1H-Dagger",      ids={33754,33756},       ap=2175, rating=0},
+    {slot="1H Sword (Phys)",   key="1H-Sword",       ids={33734,33762},       ap=2175, rating=0},
+    {slot="1H Mace (Phys)",    key="1H-Mace",        ids={33662,33733},       ap=2175, rating=0},
+    {slot="1H Axe",            key="1H-Axe",         ids={33669,33689},       ap=2175, rating=0},
+    {slot="1H Fist Weapon",    key="1H-Fist",        ids={33705,33737},       ap=2175, rating=0},
+    -- 2610 AP — 1H caster/heal
+    {slot="1H Caster Sword",   key="1H-SwordCaster", ids={33763},             ap=2610, rating=0},
+    {slot="1H Mace (Heal)",    key="1H-MaceHeal",    ids={33687,33743},       ap=2610, rating=0},
+    -- 3110 AP — 2H and ranged
+    {slot="2H Sword",          key="2H-Sword",       ids={33688},             ap=3110, rating=0},
+    {slot="2H Axe",            key="2H-Axe",         ids={33670},             ap=3110, rating=0},
+    {slot="2H Mace",           key="2H-Mace",        ids={33663},             ap=3110, rating=0},
+    {slot="2H Polearm",        key="2H-Polearm",     ids={33727},             ap=3110, rating=0},
+    {slot="2H Staff (Caster)", key="2H-Staff",       ids={33716,34540},       ap=3110, rating=0},
+    {slot="2H Staff (Feral)",  key="2H-StaffFeral",  ids={33766},             ap=3110, rating=0},
+    {slot="Crossbow",          key="Crossbow",       ids={33006},             ap=3110, rating=0},
+    {slot="Bow",               key="Bow",            ids={34529},             ap=3110, rating=0},
+    {slot="Gun",               key="Gun",            ids={34530},             ap=3110, rating=0},
 }
 
 -- S2 Veteran's honor off-pieces by armor type: { id, name, honor, marks }
@@ -2026,8 +2065,8 @@ do
     local WEAPON_GROUPS = {
         { label="1H Weapons",          keys={"1H-Dagger","1H-Sword","1H-Mace","1H-Axe","1H-Fist","1H-SwordCaster","1H-MaceHeal"} },
         { label="2H Weapons",          keys={"2H-Sword","2H-Axe","2H-Mace","2H-Polearm","2H-Staff","2H-StaffFeral"} },
-        { label="Ranged & Wands",      keys={"Crossbow","Thrown","Wand"} },
-        { label="Shields & Off-hands", keys={"Shield","Off-Tome","Off-Orb"} },
+        { label="Ranged & Wands",      keys={"Crossbow","Bow","Gun","Thrown","Wand"} },
+        { label="Shields & Off-hands", keys={"Shield","Off-Weapon","Off-Tome","Off-Orb"} },
         { label="Relics",              keys={"Idol","Libram","Totem"} },
     }
 
