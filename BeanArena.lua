@@ -76,7 +76,10 @@
 -- v1.4.1  | 2026-08-29 | S3 data complete (6-class PTR dump): 13 armor sets, full
 --         |             weapon list (24 slot rows, 43 items); fix Wyrmhide/Ringmail
 --         |             set names; Rogue+Paladin armor IDs pending
--- CURRENT: v1.4.1
+-- v1.4.2  | 2026-08-30 | Fix Paladin set names all seasons: Aegis→Lamellar (Prot),
+--         |             Vindication→Scaled (Ret), Redemption→Ornamented (Holy);
+--         |             add S3 Paladin sets; only Rogue Leather still missing
+-- CURRENT: v1.4.2
 -- ============================================================
 
 -- ============================================================
@@ -270,7 +273,7 @@ local CLASS_LIST = {"Druid","Hunter","Mage","Paladin","Priest","Rogue","Shaman",
 -- Source: AtlasLootClassic/Data/ItemSet.lua (all item IDs verified).
 local CLASS_SETS_S1 = {
     Warrior  = {"Gladiator's Plate"},
-    Paladin  = {"Gladiator's Redemption", "Gladiator's Vindication", "Gladiator's Aegis"},
+    Paladin  = {"Gladiator's Lamellar", "Gladiator's Scaled", "Gladiator's Ornamented"},
     Druid    = {"Gladiator's Kodohide", "Gladiator's Dragonhide", "Gladiator's Wildhide"},
     Hunter   = {"Gladiator's Chain"},
     Mage     = {"Gladiator's Silk"},
@@ -281,7 +284,7 @@ local CLASS_SETS_S1 = {
 }
 local CLASS_SETS_S2 = {
     Warrior  = {"Merciless Gladiator's Plate"},
-    Paladin  = {"Merciless Gladiator's Redemption", "Merciless Gladiator's Vindication", "Merciless Gladiator's Aegis"},
+    Paladin  = {"Merciless Gladiator's Lamellar", "Merciless Gladiator's Scaled", "Merciless Gladiator's Ornamented"},
     Druid    = {"Merciless Gladiator's Kodohide", "Merciless Gladiator's Dragonhide", "Merciless Gladiator's Wildhide"},
     Hunter   = {"Merciless Gladiator's Chain"},
     Mage     = {"Merciless Gladiator's Silk"},
@@ -294,7 +297,7 @@ local CLASS_SETS_S2 = {
 -- Only Mage armor IDs confirmed; other 8 class sets pending full cache-warm re-dump.
 local CLASS_SETS_S3 = {
     Warrior  = {"Vengeful Gladiator's Plate"},
-    Paladin  = {"Vengeful Gladiator's Redemption", "Vengeful Gladiator's Vindication", "Vengeful Gladiator's Aegis"},
+    Paladin  = {"Vengeful Gladiator's Lamellar", "Vengeful Gladiator's Scaled", "Vengeful Gladiator's Ornamented"},
     Druid    = {"Vengeful Gladiator's Kodohide", "Vengeful Gladiator's Dragonhide", "Vengeful Gladiator's Wyrmhide"},
     Hunter   = {"Vengeful Gladiator's Chain"},
     Mage     = {"Vengeful Gladiator's Silk"},
@@ -316,8 +319,8 @@ local ARMOR_SET_IDS = {
     ["Gladiator's Silk"]         = {25855,25854,25856,25857,25858},  -- set 579 Mage
     ["Gladiator's Mail"]         = {27471,27473,27469,27470,27472},  -- set 580 Shaman Heal
     ["Gladiator's Satin"]        = {27708,27710,27711,27707,27709},  -- set 581 Priest Shadow
-    ["Gladiator's Aegis"]        = {27704,27706,27702,27703,27705},  -- set 582 Paladin Prot
-    ["Gladiator's Vindication"]  = {27881,27883,27879,27880,27882},  -- set 583 Paladin Ret
+    ["Gladiator's Lamellar"]     = {27702,27703,27704,27705,27706},  -- set 582 Paladin Prot
+    ["Gladiator's Scaled"]       = {27879,27880,27881,27882,27883},  -- set 583 Paladin Ret
     ["Gladiator's Wildhide"]     = {28127,28129,28130,28126,28128},  -- set 584 Druid Feral
     ["Gladiator's Dragonhide"]   = {28137,28139,28140,28136,28138},  -- set 585 Druid Balance
     ["Gladiator's Chain"]        = {28331,28333,28334,28335,28332},  -- set 586 Hunter
@@ -325,9 +328,9 @@ local ARMOR_SET_IDS = {
     ["Gladiator's Kodohide"]     = {31376,31378,31379,31375,31377},  -- set 685 Druid Heal
     ["Gladiator's Linked"]       = {31400,31407,31396,31397,31406},  -- set 686 Shaman Ele
     ["Gladiator's Mooncloth"]    = {31410,31412,31413,31409,31411},  -- set 687 Priest Heal
-    ["Gladiator's Redemption"]   = {31616,31619,31613,31614,31618},  -- set 690 Paladin Heal
+    ["Gladiator's Ornamented"]   = {31613,31614,31616,31618,31619},  -- set 690 Paladin Holy
     -- Season 2 (Merciless Gladiator's) ────────────────────────────────────────
-    ["Merciless Gladiator's Aegis"]        = {31997,31996,31992,31993,31995},  -- set 700 Paladin Prot
+    ["Merciless Gladiator's Lamellar"]      = {31992,31993,31995,31996,31997},  -- set 700 Paladin Prot
     ["Merciless Gladiator's Plate"]        = {30488,30490,30486,30487,30489},  -- set 701 Warrior
     ["Merciless Gladiator's Dreadweave"]   = {31974,31976,31977,31973,31975},  -- set 702 Warlock
     ["Merciless Gladiator's Earthshaker"]  = {32006,32008,32004,32005,32007},  -- set 703 Shaman Enh
@@ -335,13 +338,13 @@ local ARMOR_SET_IDS = {
     ["Merciless Gladiator's Mooncloth"]    = {32016,32018,32019,32015,32017},  -- set 705 Priest Heal
     ["Merciless Gladiator's Chain"]        = {31962,31964,31960,31961,31963},  -- set 706 Hunter
     ["Merciless Gladiator's Satin"]        = {32035,32037,32038,32034,32036},  -- set 707 Priest Shadow
-    ["Merciless Gladiator's Redemption"]   = {32022,32024,32020,32021,32023},  -- set 708 Paladin Heal
+    ["Merciless Gladiator's Ornamented"]   = {32020,32021,32022,32023,32024},  -- set 708 Paladin Holy
     ["Merciless Gladiator's Kodohide"]     = {31988,31990,31991,31987,31989},  -- set 709 Druid Heal
     ["Merciless Gladiator's Silk"]         = {32048,32047,32050,32049,32051},  -- set 710 Mage
     ["Merciless Gladiator's Wildhide"]     = {31968,31971,31972,31967,31969},  -- set 711 Druid Feral
     ["Merciless Gladiator's Mail"]         = {32011,32013,32009,32010,32012},  -- set 712 Shaman Heal
     ["Merciless Gladiator's Leather"]      = {31999,32001,32002,31998,32000},  -- set 713 Rogue
-    ["Merciless Gladiator's Vindication"]  = {32041,32043,32039,32040,32042},  -- set 714 Paladin Ret
+    ["Merciless Gladiator's Scaled"]       = {32039,32040,32041,32042,32043},  -- set 714 Paladin Ret
     ["Merciless Gladiator's Linked"]       = {32031,32033,32029,32030,32032},  -- set 715 Shaman Ele
     ["Merciless Gladiator's Dragonhide"]   = {32057,32059,32060,32056,32058},  -- set 716 Druid Balance
     -- Season 3 (Vengeful Gladiator's) ── PTR vendor dump 2026-08-29; Rogue+Paladin pending
@@ -358,6 +361,9 @@ local ARMOR_SET_IDS = {
     ["Vengeful Gladiator's Satin"]         = {33744,33745,33746,33747,33748},  -- Priest Shadow
     ["Vengeful Gladiator's Silk"]          = {33757,33758,33759,33760,33761},  -- Mage
     ["Vengeful Gladiator's Wyrmhide"]      = {33767,33768,33769,33770,33771},  -- Druid Feral
+    ["Vengeful Gladiator's Lamellar"]      = {33695,33696,33697,33698,33699},  -- Paladin Prot
+    ["Vengeful Gladiator's Scaled"]        = {33749,33750,33751,33752,33753},  -- Paladin Ret
+    ["Vengeful Gladiator's Ornamented"]    = {33722,33723,33724,33725,33726},  -- Paladin Holy
 }
 
 -- Weapon slot keys each class can equip (used to filter arena weapon list)
