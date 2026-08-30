@@ -81,7 +81,7 @@
 --         |             add S3 Paladin sets; only Rogue Leather still missing
 -- v1.4.3  | 2026-08-30 | Add S3 Rogue Leather (33700-33704); all 17 S3 armor sets
 --         |             now complete
--- CURRENT: v1.4.4
+-- CURRENT: v1.4.5
 -- ============================================================
 
 -- ============================================================
@@ -571,6 +571,47 @@ local S2_HONOR_BYARMOR = {
             {id=32793,name="Veteran's Plate Greaves"},
             {id=32990,name="Veteran's Ornamented Greaves"},
             {id=32789,name="Veteran's Lamellar Greaves"},
+        }},
+    },
+}
+
+-- Season 3 (Vindicator's) honor off-pieces — PTR vendor dump 2026-08-30
+-- Cloth/Mail/Plate off-pieces pending vendor dump; only leather+universal confirmed.
+local S3_HONOR_UNIVERSAL = {
+    { slot="Neck", items={
+        {id=33920,name="Vindicator's Pendant of Conquest"},
+        {id=33921,name="Vindicator's Pendant of Dominance"},
+        {id=35319,name="Vindicator's Pendant of Subjugation"},
+        {id=33922,name="Vindicator's Pendant of Salvation"},
+        {id=35317,name="Vindicator's Pendant of Reprieve"},
+        {id=33923,name="Vindicator's Pendant of Triumph"},
+    }, honor=12695, marks={} },
+    { slot="Ring", items={
+        {id=33853,name="Vindicator's Band of Dominance"},
+        {id=33918,name="Vindicator's Band of Salvation"},
+        {id=33919,name="Vindicator's Band of Triumph"},
+        {id=35320,name="Vindicator's Band of Subjugation"},
+    }, honor=12695, marks={AV=5} },
+}
+local S3_HONOR_BYARMOR = {
+    Leather = {
+        { slot="Bracers", honor=9785,  marks={WSG=10}, items={
+            {id=33881,name="Vindicator's Dragonhide Bracers"},
+            {id=33887,name="Vindicator's Kodohide Bracers"},
+            {id=33917,name="Vindicator's Wyrmhide Bracers"},
+            {id=33893,name="Vindicator's Leather Bracers"},
+        }},
+        { slot="Belt", honor=14815, marks={AB=10}, items={
+            {id=33879,name="Vindicator's Dragonhide Belt"},
+            {id=33885,name="Vindicator's Kodohide Belt"},
+            {id=33915,name="Vindicator's Wyrmhide Belt"},
+            {id=33891,name="Vindicator's Leather Belt"},
+        }},
+        { slot="Boots", honor=14815, marks={EotS=20}, items={
+            {id=33880,name="Vindicator's Dragonhide Boots"},
+            {id=33886,name="Vindicator's Kodohide Boots"},
+            {id=33916,name="Vindicator's Wyrmhide Boots"},
+            {id=33892,name="Vindicator's Leather Boots"},
         }},
     },
 }
@@ -1949,6 +1990,7 @@ do
         local bestRating = math.max(r2, r3, r5)
         local curAP      = GetCurrentArenaPoints()
         local cy = -2
+        local needsACache = false
 
         local function AGLine()
             local d = ovCnt:CreateTexture(nil,"ARTWORK")
@@ -2002,6 +2044,7 @@ do
                 if itemID then
                     local _, _, _, _, _, _, _, _, _, tex = GetItemInfo(itemID)
                     iconPath = tex
+                    if not tex then needsACache = true end
                 end
                 local iconBtn = CreateFrame("Button", nil, ovCnt)
                 iconBtn:SetSize(IC_SZ, IC_SZ)
@@ -2021,11 +2064,11 @@ do
                     end)
                     iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
                     iconBtn:SetScript("OnClick", function(self, btn)
-                        if IsShiftKeyDown() then
-                            local _, link = GetItemInfo(capID)
-                            if link and ChatEdit_InsertLink then
-                                ChatEdit_InsertLink(link)
-                            end
+                        local _, link = GetItemInfo(capID)
+                        if IsControlKeyDown() and link then
+                            DressUpItemLink(link)
+                        elseif IsShiftKeyDown() and link and ChatEdit_InsertLink then
+                            ChatEdit_InsertLink(link)
                         end
                     end)
                 end
@@ -2049,20 +2092,22 @@ do
             cLbl:SetText("|cffAAAAAA"..def.slot.."|r")
             local apLbl = ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
             apLbl:SetPoint("TOPLEFT", ovCnt,"TOPLEFT", 82, cy)
-            apLbl:SetText(string.format("|cff%s%d Arena Points|r", aMet and "FFD700" or "FF6666", ap))
-            if rating > 0 then
-                local rLbl = ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
-                rLbl:SetPoint("TOPLEFT", ovCnt,"TOPLEFT", 155, cy)
-                rLbl:SetText(string.format("|cff%s%d rating|r",
-                    rMet and "00FF00" or "FF4444", rating))
-            end
+            apLbl:SetText(string.format("|cff%s%d AP|r", aMet and "FFD700" or "FF6666", ap))
             local tick = ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
             tick:SetPoint("TOPRIGHT", ovCnt,"TOPRIGHT", 0, cy)
             tick:SetText(allMet and "|cff00FF00[OK]|r" or
                          (not aMet and "|cffFF4444[NO]|r" or "|cffFFAA00[!]|r"))
-            cy = cy - 16
+            cy = cy - 14
+            if rating > 0 then
+                local rLbl = ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+                rLbl:SetPoint("TOPLEFT", ovCnt,"TOPLEFT", 82, cy)
+                rLbl:SetText(string.format("|cff%sRequires %d Arena Rating|r",
+                    rMet and "00FF00" or "FF4444", rating))
+                cy = cy - 13
+            end
         end
         ovCnt:SetHeight(math.abs(cy) + 20)
+        if needsACache then C_Timer.After(1.5, BuildArenaContent) end
     end
 
     -- ================================================================
@@ -2086,6 +2131,7 @@ do
         local bestRating = math.max(r2, r3, r5)
         local curAP      = GetCurrentArenaPoints()
         local cy = -2
+        local needsWCache = false
         local function WHdr(txt)
             local h = ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
             h:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",0,cy)
@@ -2126,19 +2172,20 @@ do
                     local iconTex = iconBtn:CreateTexture(nil, "BACKGROUND")
                     iconTex:SetAllPoints()
                     local _,_,_,_,_,_,_,_,_,iconPath = GetItemInfo(id)
+                    if not iconPath then needsWCache = true end
                     iconTex:SetTexture(iconPath or "Interface\Icons\INV_Misc_QuestionMark")
                     if not canAfford then
                         iconTex:SetDesaturated(true); iconTex:SetVertexColor(0.55, 0.55, 0.55)
                     end
                     if not ratingMet then
                         local lockBg = iconBtn:CreateTexture(nil, "OVERLAY")
-                        lockBg:SetSize(13, 13)
+                        lockBg:SetSize(26, 12)
                         lockBg:SetPoint("BOTTOMRIGHT", iconBtn, "BOTTOMRIGHT", 0, 0)
                         lockBg:SetColorTexture(0.65, 0, 0, 0.92)
                         local lockTxt = iconBtn:CreateFontString(nil, "OVERLAY")
-                        lockTxt:SetFont("Fonts\\FRIZQT__.TTF", 8, "OUTLINE")
+                        lockTxt:SetFont("Fonts\\FRIZQT__.TTF", 7, "OUTLINE")
                         lockTxt:SetPoint("CENTER", lockBg, "CENTER", 0, 0)
-                        lockTxt:SetText("R")
+                        lockTxt:SetText(tostring(wep.rating))
                         lockTxt:SetTextColor(1, 0.75, 0.75, 1)
                     end
                     iconBtn:SetHighlightTexture("Interface\Buttons\ButtonHilight-Square")
@@ -2159,11 +2206,11 @@ do
                     end)
                     iconBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
                     iconBtn:SetScript("OnClick", function(self, btn)
-                        if IsShiftKeyDown() then
-                            local _, link = GetItemInfo(capID)
-                            if link and ChatEdit_InsertLink then
-                                ChatEdit_InsertLink(link)
-                            end
+                        local _, link = GetItemInfo(capID)
+                        if IsControlKeyDown() and link then
+                            DressUpItemLink(link)
+                        elseif IsShiftKeyDown() and link and ChatEdit_InsertLink then
+                            ChatEdit_InsertLink(link)
                         end
                     end)
                     col = col + 1
@@ -2174,6 +2221,7 @@ do
             end
         end
         ovCnt:SetHeight(math.abs(cy) + 20)
+        if needsWCache then C_Timer.After(1.5, BuildWeaponsContent) end
     end
 
     -- ================================================================
@@ -2184,8 +2232,8 @@ do
     local function BuildHonorContent()
         ClearContent()
         local armorType  = CLASS_ARMOR_TYPE[ovClass] or "Cloth"
-        local universal  = S2_HONOR_UNIVERSAL
-        local byArmor    = S2_HONOR_BYARMOR
+        local universal  = (ovSeason == 3 and S3_HONOR_UNIVERSAL) or S2_HONOR_UNIVERSAL
+        local byArmor    = (ovSeason == 3 and S3_HONOR_BYARMOR)    or S2_HONOR_BYARMOR
         local armorRows  = byArmor[armorType] or {}
         local honor      = GetCurrentHonor()
         local marks      = GetPvPMarkCounts()
@@ -2255,25 +2303,29 @@ do
             end)
             rowBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
             rowBtn:SetScript("OnClick", function(self, btn)
-                if IsShiftKeyDown() then
-                    local _, link = GetItemInfo(capturedID)
-                    if link and ChatEdit_InsertLink then
-                        ChatEdit_InsertLink(link)
-                    end
+                local _, link = GetItemInfo(capturedID)
+                if IsControlKeyDown() and link then
+                    DressUpItemLink(link)
+                elseif IsShiftKeyDown() and link and ChatEdit_InsertLink then
+                    ChatEdit_InsertLink(link)
                 end
             end)
             cy = cy - (HICON + 2)
         end
 
-        HGHdr("Neck & Ring  |cffAAAAAA— all classes|r")
+        HGHdr("Neck & Ring  |cffAAAAAA— all classes (S"..ovSeason..")|r")
         ColHdrs()
+        local needsCache = false
         for _, slotData in ipairs(universal) do
             local prev_cy = cy
-            for _, item in ipairs(slotData.items) do ItemRow(item, slotData) end
+            for _, item in ipairs(slotData.items) do
+                if not GetItemInfo(item.id) then needsCache = true end
+                ItemRow(item, slotData)
+            end
             if cy ~= prev_cy then cy = cy - 4 end
         end
         cy = cy - 4
-        HGHdr("Off-pieces  |cffAAAAAA— "..armorType.." ("..ovClass..")|r")
+        HGHdr("Off-pieces  |cffAAAAAA— "..armorType.." (S"..ovSeason..")|r")
         ColHdrs()
         if #armorRows == 0 then
             local nf=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
@@ -2284,11 +2336,15 @@ do
                 local slbl=ovCnt:CreateFontString(nil,"OVERLAY","GameFontNormal")
                 slbl:SetPoint("TOPLEFT",ovCnt,"TOPLEFT",0,cy)
                 slbl:SetText("|cff888888— "..slotData.slot.." —|r"); cy=cy-14
-                for _, item in ipairs(slotData.items) do ItemRow(item, slotData) end
+                for _, item in ipairs(slotData.items) do
+                    if not GetItemInfo(item.id) then needsCache = true end
+                    ItemRow(item, slotData)
+                end
                 cy = cy - 4
             end
         end
         ovCnt:SetHeight(math.abs(cy)+20)
+        if needsCache then C_Timer.After(1.5, BuildHonorContent) end
     end
 
     -- ================================================================
