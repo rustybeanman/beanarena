@@ -70,7 +70,10 @@
 -- v1.3.1  | 2026-06-18 | Fix stack overflow: replace ClearContent frame
 --         |             accumulation with fresh-child swap; restrict
 --         |             BeanArena_RebuildRefPage to item pages only
--- CURRENT: v1.3.1
+-- v1.4.0  | 2026-08-29 | S3 Vengeful Gladiator: S3 season button on Arena Gear
+--         |             and Weapons pages; Mage armor IDs confirmed (PTR dump);
+--         |             8 class sets + most weapons pending full cache-warm re-dump
+-- CURRENT: v1.4.0
 -- ============================================================
 
 -- ============================================================
@@ -284,6 +287,19 @@ local CLASS_SETS_S2 = {
     Shaman   = {"Merciless Gladiator's Mail", "Merciless Gladiator's Linked", "Merciless Gladiator's Earthshaker"},
     Warlock  = {"Merciless Gladiator's Dreadweave", "Merciless Gladiator's Felweave"},
 }
+-- Season 3 (Vengeful Gladiator's) — PTR vendor dump 2026-08-29
+-- Only Mage armor IDs confirmed; other 8 class sets pending full cache-warm re-dump.
+local CLASS_SETS_S3 = {
+    Warrior  = {"Vengeful Gladiator's Plate"},
+    Paladin  = {"Vengeful Gladiator's Redemption", "Vengeful Gladiator's Vindication", "Vengeful Gladiator's Aegis"},
+    Druid    = {"Vengeful Gladiator's Kodohide", "Vengeful Gladiator's Dragonhide", "Vengeful Gladiator's Wildhide"},
+    Hunter   = {"Vengeful Gladiator's Chain"},
+    Mage     = {"Vengeful Gladiator's Silk"},
+    Priest   = {"Vengeful Gladiator's Mooncloth", "Vengeful Gladiator's Satin"},
+    Rogue    = {"Vengeful Gladiator's Leather"},
+    Shaman   = {"Vengeful Gladiator's Mail", "Vengeful Gladiator's Linked", "Vengeful Gladiator's Earthshaker"},
+    Warlock  = {"Vengeful Gladiator's Dreadweave", "Vengeful Gladiator's Felweave"},
+}
 
 -- Full item ID list per arena set variant name.
 -- 5 item IDs per set sourced from AtlasLootClassic/Data/ItemSet.lua (all verified).
@@ -325,6 +341,8 @@ local ARMOR_SET_IDS = {
     ["Merciless Gladiator's Vindication"]  = {32041,32043,32039,32040,32042},  -- set 714 Paladin Ret
     ["Merciless Gladiator's Linked"]       = {32031,32033,32029,32030,32032},  -- set 715 Shaman Ele
     ["Merciless Gladiator's Dragonhide"]   = {32057,32059,32060,32056,32058},  -- set 716 Druid Balance
+    -- Season 3 (Vengeful Gladiator's) ── PTR vendor dump 2026-08-29; 8 class sets still uncached
+    ["Vengeful Gladiator's Silk"]          = {33759,33757,33758,33760,33761},  -- Mage (Ontok idx 1-5)
 }
 
 -- Weapon slot keys each class can equip (used to filter arena weapon list)
@@ -401,6 +419,17 @@ local S1_WEAPONS = {
     {slot="Relic — Idol",      key="Idol",           ids={33942,33945,28355}, ap=875,  rating=0   },
     {slot="Relic — Libram",    key="Libram",         ids={28356,33936,33948}, ap=875,  rating=0   },
     {slot="Relic — Totem",     key="Totem",          ids={28357,33951,33939}, ap=875,  rating=0   },
+}
+
+-- Season 3 (Vengeful Gladiator's) weapons — PTR vendor dump 2026-08-29
+-- Only 5 of ~36 weapon/off-hand/relic entries confirmed. Re-dump at Ontok Shatterhorn
+-- after cache warm (see vendor pack notes) to fill remaining 31 slots.
+local S3_WEAPONS = {
+    {slot="1H Sword (Phys)",   key="1H-Sword",       ids={33762},       ap=2175, rating=0},
+    {slot="2H Sword",          key="2H-Sword",        ids={33688},       ap=3110, rating=0},
+    {slot="2H Axe",            key="2H-Axe",          ids={33670},       ap=3110, rating=0},
+    {slot="2H Mace",           key="2H-Mace",         ids={33663},       ap=3110, rating=0},
+    {slot="2H Polearm",        key="2H-Polearm",      ids={33727},       ap=3110, rating=0},
 }
 
 -- S2 Veteran's honor off-pieces by armor type: { id, name, honor, marks }
@@ -1673,11 +1702,16 @@ do
     ovS2Btn:SetPoint("LEFT", ovS1Btn, "RIGHT", 4, 0)
     ovS2Btn:SetText("S2"); ovS2Btn:GetFontString():SetFontObject("GameFontNormalSmall")
     ovS2Btn:Hide()
+    local ovS3Btn = CreateFrame("Button", nil, refFrame, "UIPanelButtonTemplate")
+    ovS3Btn:SetSize(48, 22)
+    ovS3Btn:SetPoint("LEFT", ovS2Btn, "RIGHT", 4, 0)
+    ovS3Btn:SetText("S3"); ovS3Btn:GetFontString():SetFontObject("GameFontNormalSmall")
+    ovS3Btn:Hide()
 
     -- ── Class selector (Arena Gear only) ─────────────────────────────
     local ovClassBtn = CreateFrame("Button", nil, refFrame, "UIPanelButtonTemplate")
     ovClassBtn:SetSize(138, 22)
-    ovClassBtn:SetPoint("LEFT", ovS2Btn, "RIGHT", 6, 0)
+    ovClassBtn:SetPoint("LEFT", ovS3Btn, "RIGHT", 6, 0)
     ovClassBtn:GetFontString():SetFontObject("GameFontNormalSmall")
     ovClassBtn:SetText("Warrior"); ovClassBtn:Hide()
     local ovClassDD = CreateFrame("Frame", "BeanArenaOvClassDD", UIParent, "UIDropDownMenuTemplate")
@@ -1850,19 +1884,19 @@ do
     }
 
     -- Ordered slot list with AP cost and personal-rating gate per season.
-    -- apS1/apS2: arena points required.
-    -- ratingS1/ratingS2: personal rating required (0 = no gate).
+    -- apS1/apS2/apS3: arena points required.  ratingS*: personal rating gate (0 = none).
+    -- S3 costs confirmed from PTR vendor dump 2026-08-29; rating gates TBD on live.
     local SLOT_DEFS = {
-        { slot="Head",      apS1=620,  apS2=1550, ratingS1=0,    ratingS2=0    },
-        { slot="Shoulders", apS1=495,  apS2=1245, ratingS1=2000, ratingS2=2000 },
-        { slot="Chest",     apS1=620,  apS2=1550, ratingS1=0,    ratingS2=0    },
-        { slot="Legs",      apS1=620,  apS2=1550, ratingS1=0,    ratingS2=0    },
-        { slot="Gloves",    apS1=370,  apS2=930,  ratingS1=0,    ratingS2=0    },
+        { slot="Head",      apS1=620, apS2=1550, apS3=1550, ratingS1=0,    ratingS2=0,    ratingS3=0    },
+        { slot="Shoulders", apS1=495, apS2=1245, apS3=1245, ratingS1=2000, ratingS2=2000, ratingS3=2000 },
+        { slot="Chest",     apS1=620, apS2=1550, apS3=1550, ratingS1=0,    ratingS2=0,    ratingS3=0    },
+        { slot="Legs",      apS1=620, apS2=1550, apS3=1550, ratingS1=0,    ratingS2=0,    ratingS3=0    },
+        { slot="Gloves",    apS1=370, apS2=930,  apS3=930,  ratingS1=0,    ratingS2=0,    ratingS3=0    },
     }
 
     local function BuildArenaContent()
         ClearContent()
-        local setList    = ovSeason == 2 and CLASS_SETS_S2 or CLASS_SETS_S1
+        local setList    = (ovSeason == 3 and CLASS_SETS_S3) or (ovSeason == 2 and CLASS_SETS_S2) or CLASS_SETS_S1
         local r2,r3,r5   = GetLiveRatings()
         local bestRating = math.max(r2, r3, r5)
         local curAP      = GetCurrentArenaPoints()
@@ -1957,8 +1991,8 @@ do
         costHdr:SetText("|cff888888Costs (S"..ovSeason.."):|r")
         cy = cy - 15
         for _, def in ipairs(SLOT_DEFS) do
-            local ap     = ovSeason == 2 and def.apS2    or def.apS1
-            local rating = ovSeason == 2 and def.ratingS2 or def.ratingS1
+            local ap     = (ovSeason == 3 and def.apS3)    or (ovSeason == 2 and def.apS2)    or def.apS1
+            local rating = (ovSeason == 3 and def.ratingS3) or (ovSeason == 2 and def.ratingS2) or def.ratingS1
             local rMet   = rating == 0 or bestRating >= rating
             local aMet   = curAP >= ap
             local allMet = aMet and rMet
@@ -1999,7 +2033,7 @@ do
 
     local function BuildWeaponsContent()
         ClearContent()
-        local weaponList = ovSeason == 2 and S2_WEAPONS or S1_WEAPONS
+        local weaponList = (ovSeason == 3 and S3_WEAPONS) or (ovSeason == 2 and S2_WEAPONS) or S1_WEAPONS
         local r2,r3,r5   = GetLiveRatings()
         local bestRating = math.max(r2, r3, r5)
         local curAP      = GetCurrentArenaPoints()
@@ -2278,8 +2312,8 @@ do
             {hdr="Menu Navigation  (top-left Menu button)",body=
                 "Calculator — live ratings, AP calc, rating target\n"..
                 "Honor — current honor, marks, weekly plan, gear checklist\n"..
-                "Arena Gear — S1/S2 armor icons + AP/rating costs  (S1/S2 + class buttons)\n"..
-                "Weapons — all PvP weapons, relics, off-hands  (S1/S2 toggle)\n"..
+                "Arena Gear — S1/S2/S3 armor icons + AP/rating costs  (S1/S2/S3 + class buttons)\n"..
+                "Weapons — all PvP weapons, relics, off-hands  (S1/S2/S3 toggle; S3 partial PTR data)\n"..
                 "Honor Gear — S2 Veteran's honor costs, auto-detects your class\n"..
                 "Team BGs — share and view party honor + BG marks in real time\n"..
                 "CC/DR Table — full breakdown with durations for all classes\n"..
@@ -2538,7 +2572,8 @@ do
     SwitchPage = function(name)
         ovSection = name
         local hasSeasons=(name=="Arena Gear" or name=="Weapons")
-        if hasSeasons then ovS1Btn:Show(); ovS2Btn:Show() else ovS1Btn:Hide(); ovS2Btn:Hide() end
+        if hasSeasons then ovS1Btn:Show(); ovS2Btn:Show(); ovS3Btn:Show()
+        else ovS1Btn:Hide(); ovS2Btn:Hide(); ovS3Btn:Hide() end
         if name=="Arena Gear" then ovClassBtn:Show() else ovClassBtn:Hide() end
         ovScr:SetVerticalScroll(0)
         if name=="Honor" then
@@ -2546,7 +2581,7 @@ do
         elseif name=="Arena Gear" then
             BuildArenaContent()
         elseif name=="Weapons" then
-            for _,wlist in ipairs({S1_WEAPONS,S2_WEAPONS}) do
+            for _,wlist in ipairs({S1_WEAPONS,S2_WEAPONS,S3_WEAPONS}) do
                 for _,wep in ipairs(wlist) do
                     if wep.ids then for _,id in ipairs(wep.ids) do GetItemInfo(id) end end
                 end
@@ -2583,6 +2618,7 @@ do
     -- ── Control button wiring ────────────────────────────────────────────
     ovS1Btn:SetScript("OnClick", function() ovSeason=1; SwitchPage(ovSection) end)
     ovS2Btn:SetScript("OnClick", function() ovSeason=2; SwitchPage(ovSection) end)
+    ovS3Btn:SetScript("OnClick", function() ovSeason=3; SwitchPage(ovSection) end)
     ovClassBtn:SetScript("OnClick", function(self)
         UIDropDownMenu_Initialize(ovClassDD, function()
             for _,cls in ipairs(CLASS_LIST) do
